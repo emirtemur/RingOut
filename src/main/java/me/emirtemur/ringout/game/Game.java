@@ -149,6 +149,8 @@ public final class Game {
                 return;
             }
         }
+        // A pearl thrown just before joining would otherwise pull the player off the lobby later.
+        discardPearls(player);
         PlayerSnapshot snapshot = PlayerSnapshot.capture(player);
         if (!plugin.snapshots().save(id, snapshot)) {
             player.sendMessage(s.message("snapshot-save-failed"));
@@ -196,6 +198,8 @@ public final class Game {
         alive.remove(id);
         outsideTicks.remove(id);
         player.hideBossBar(bossBar);
+        // Runs before the player's data is saved on quit, so no pearl is stored with them either.
+        discardPearls(player);
         PlayerSnapshot snapshot = snapshots.remove(id);
         if (!quit) {
             restore(player, snapshot);
@@ -474,6 +478,7 @@ public final class Game {
         }
         Settings s = settings();
         outsideTicks.remove(id);
+        discardPearls(player);
         player.getInventory().clear();
         player.setFireTicks(0);
         player.setFallDistance(0);
@@ -616,9 +621,19 @@ public final class Game {
         player.setFallDistance(0);
     }
 
+    /**
+     * Removes the player's ender pearls still in flight. Since 1.21.2 a pearl keeps its owner
+     * even after they leave (it is saved with them and follows across worlds), so a pearl thrown
+     * just before leaving the game would pull them back into the arena.
+     */
+    public static void discardPearls(Player player) {
+        List.copyOf(player.getEnderPearls()).forEach(Entity::remove);
+    }
+
     /** Restores from memory, falling back to disk, then removes the disk copy. */
     private void restore(Player player, PlayerSnapshot snapshot) {
         UUID id = player.getUniqueId();
+        discardPearls(player);
         PlayerSnapshot snap = snapshot != null ? snapshot : plugin.snapshots().load(id).orElse(null);
         if (snap != null) {
             snap.restore(player);

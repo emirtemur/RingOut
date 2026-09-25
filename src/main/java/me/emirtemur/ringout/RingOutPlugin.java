@@ -275,6 +275,8 @@ public final class RingOutPlugin extends JavaPlugin {
             return;
         }
         snapshots.load(player.getUniqueId()).ifPresent(snapshot -> {
+            // After a crash the last auto-save may have stored an in-flight arena pearl with the player.
+            Game.discardPearls(player);
             snapshot.restore(player);
             snapshots.delete(player.getUniqueId());
             player.sendMessage(settings.message("snapshot-restored"));

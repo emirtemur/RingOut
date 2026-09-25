@@ -1,0 +1,20 @@
+name: RingOut
+version: '${version}'
+main: me.emirtemur.ringout.RingOutPlugin
+api-version: '1.21'
+authors: [emirtemur]
+description: Last one standing inside the ring wins.
+
+commands:
+  ringout:
+    description: RingOut minigame commands.
+    usage: /<command> <join|leave|start|stop|setcenter|setlobby|radius|slices|build|createworld|reload>
+    aliases: [ro]
+
+permissions:
+  ringout.play:
+    description: Join and leave RingOut games.
+    default: true
+  ringout.admin:
+    description: Set up and control RingOut arenas.
+    default: op

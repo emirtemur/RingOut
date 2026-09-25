@@ -1,0 +1,193 @@
+# RingOut - last one standing inside the ring wins.
+# Messages use MiniMessage format: https://docs.advntr.dev/minimessage/format.html
+
+arena:
+  # World the ring is built in. "/ro createworld" creates an empty void world with this name.
+  world: ringout_world
+  center:
+    x: 0
+    y: 150
+    z: 0
+  radius: 20
+  slices: 8
+  # Slice colors, used in order and repeated if there are more slices than colors.
+  colors:
+    - RED_CONCRETE
+    - ORANGE_CONCRETE
+    - YELLOW_CONCRETE
+    - LIME_CONCRETE
+    - CYAN_CONCRETE
+    - BLUE_CONCRETE
+    - PURPLE_CONCRETE
+    - PINK_CONCRETE
+  edge: WHITE_CONCRETE
+  core: OBSIDIAN
+  core-radius: 2
+  # Blocks placed per tick while building. Lower it if building causes lag.
+  blocks-per-tick: 2000
+  # Lobby is set with /ro setlobby. When unset, players wait on the center of the ring.
+  lobby:
+    set: false
+  # Managed by the plugin, do not edit.
+  built: false
+  built-radius: 0
+
+game:
+  min-players: 2
+  max-players: 16
+  # Start automatically once min-players have joined.
+  auto-start: true
+  # Seconds the lobby waits for more players after min-players is reached.
+  lobby-wait: 15
+  # Seconds players stand frozen on their slice before the fight starts.
+  countdown: 5
+  # Seconds between random items.
+  item-interval: 8
+  # Extra distance (blocks) past the ring edge before a player counts as outside.
+  margin: 0.5
+  # Ticks a player may stay outside the ring (e.g. on a bridge) before elimination. 20 ticks = 1 second.
+  outside-grace-ticks: 20
+  # Players this many blocks below the ring are eliminated.
+  fall-depth: 5
+  # false = hits deal no damage but still knock back.
+  pvp-damage: true
+  # Whether TNT and other explosions can blow holes in the ring. The ring is rebuilt every game.
+  explosions-break-arena: true
+  # Placed TNT ignites immediately.
+  auto-prime-tnt: true
+  tnt-fuse-ticks: 40
+  # Spectators further than this from the center are pulled back. 0 = radius + 30.
+  spectator-max-distance: 0
+  # Seconds to celebrate before everyone is sent back.
+  ending-seconds: 8
+
+sudden-death:
+  enabled: true
+  # Seconds into the fight before the ring starts shrinking.
+  start-after: 300
+  # Seconds between each ring removal.
+  shrink-interval: 5
+  min-radius: 3
+
+# Console commands run for the winner. %player% is replaced with the winner's name.
+win-commands: []
+#  - "give %player% diamond 1"
+
+# Random item pool. Each entry: material, amount, weight (higher = more common),
+# optional name, lore, enchantments, unbreakable, and extra (items given together with it).
+items:
+  - material: STICK
+    name: "<gold><bold>Knockback Stick"
+    weight: 12
+    enchantments:
+      knockback: 2
+  - material: WHITE_WOOL
+    amount: 16
+    weight: 14
+  - material: OAK_PLANKS
+    amount: 16
+    weight: 8
+  - material: SNOWBALL
+    amount: 8
+    weight: 10
+  - material: EGG
+    amount: 8
+    weight: 6
+  - material: WIND_CHARGE
+    amount: 3
+    weight: 7
+  - material: ENDER_PEARL
+    amount: 1
+    weight: 5
+  - material: FISHING_ROD
+    weight: 6
+  - material: BOW
+    name: "<aqua>Punch Bow"
+    weight: 5
+    unbreakable: true
+    enchantments:
+      punch: 1
+      infinity: 1
+    extra:
+      - material: ARROW
+        amount: 1
+  - material: STONE_SWORD
+    weight: 5
+    enchantments:
+      knockback: 1
+  - material: TNT
+    amount: 2
+    weight: 5
+  - material: GOLDEN_APPLE
+    amount: 1
+    weight: 4
+  - material: COBWEB
+    amount: 2
+    weight: 4
+  - material: SLIME_BLOCK
+    amount: 4
+    weight: 4
+  - material: SHIELD
+    weight: 3
+
+messages:
+  prefix: "<dark_gray>[<gradient:#ff5555:#ffaa00>RingOut</gradient>]</dark_gray> "
+  no-permission: "<red>You don't have permission to do that."
+  players-only: "<red>Only players can use this command."
+  usage: "<gray>Usage: <yellow>/ro <join|leave|start|stop|setcenter|setlobby|radius|slices|build|createworld|reload>"
+  arena-not-ready: "<red>The arena is not set up yet. An admin must run <yellow>/ro build</yellow>."
+  arena-resetting: "<yellow>The arena is being reset, try again in a moment."
+  already-in-game: "<red>You are already in the game."
+  not-in-game: "<red>You are not in a game."
+  game-running: "<red>A game is already in progress. Try again when it ends."
+  game-full: "<red>The game is full."
+  joined: "<green><player> joined the ring! <gray>(<count>/<max>)"
+  left: "<yellow><player> left the game. <gray>(<count>/<max>)"
+  waiting: "<gray>Waiting for players... <yellow><count>/<min>"
+  lobby-countdown: "<yellow>The game starts in <gold><seconds></gold>s!"
+  lobby-cancelled: "<red>Not enough players, the start was cancelled."
+  preparing: "<yellow>Preparing the arena..."
+  countdown-title: "<gold><seconds>"
+  countdown-subtitle: "<yellow>Get ready!"
+  start-title: "<green><bold>FIGHT!"
+  start-subtitle: "<gray>Knock everyone out of the ring"
+  item-received: "<gray>You received <item><gray>."
+  eliminated-fell: "<red><player> fell out of the ring! <gray><alive> left."
+  eliminated-outside: "<red><player> stepped out of the ring! <gray><alive> left."
+  eliminated-killed: "<red><player> was knocked out! <gray><alive> left."
+  eliminated-left: "<red><player> left and was eliminated. <gray><alive> left."
+  eliminated-title: "<red><bold>ELIMINATED"
+  eliminated-subtitle: "<gray>You are now spectating."
+  sudden-death: "<dark_red><bold>SUDDEN DEATH!</bold> <red>The ring is shrinking!"
+  bossbar: "<yellow>Players left: <white><alive></white> <dark_gray>•</dark_gray> Next item: <white><seconds>s"
+  bossbar-sudden-death: "<red>Players left: <white><alive></white> <dark_gray>•</dark_gray> Ring radius: <white><radius>"
+  win-broadcast: "<gold><bold><player></bold> <yellow>is the last one standing and wins!"
+  win-title: "<gold><bold><player> WINS!"
+  win-subtitle: "<yellow>Last one in the ring"
+  no-winner: "<gray>Nobody survived. No winner this time."
+  game-stopped: "<red>The game was stopped by an admin."
+  no-game: "<red>There is no game to stop."
+  start-not-enough: "<red>Need at least <min> player(s) to start."
+  started: "<green>Starting the game."
+  stopped: "<green>Game stopped."
+  arena-building: "<yellow>Building the arena..."
+  arena-built: "<green>Arena built <gray>(radius <radius>, <slices> slices)."
+  arena-build-failed: "<red>Arena build failed: <error>"
+  center-set: "<green>Ring center set to <white><world> <x> <y> <z></white>. Run <yellow>/ro build</yellow> to build it."
+  lobby-set: "<green>Lobby set."
+  radius-set: "<green>Radius set to <white><radius></white>. Run <yellow>/ro build</yellow> to apply."
+  slices-set: "<green>Slices set to <white><slices></white>. Run <yellow>/ro build</yellow> to apply."
+  world-created: "<green>Void world <white><world></white> is ready."
+  world-not-found: "<red>World <white><world></white> is not loaded."
+  invalid-number: "<red><value> is not a valid number."
+  out-of-range: "<red>Value must be between <min> and <max>."
+  cannot-while-running: "<red>You can't do that while a game is running."
+  reloaded: "<green>Configuration reloaded."
+  reload-failed: "<red>config.yml has an error, the previous configuration is kept and arena changes are not saved. Check the console."
+  build-needs-config: "<red>config.yml failed to load at startup, so the arena location is unknown. Fix the file and run <yellow>/ro reload</yellow> before building."
+  config-invalid: "<red>config.yml has an error, so this change is applied but not saved yet. Fix the file: it is saved with the next build, or set it again after <yellow>/ro reload</yellow>."
+  config-load-failed: "<red>config.yml failed to load, so arena settings can't be changed. Fix the file and run <yellow>/ro reload</yellow> first."
+  snapshot-restored: "<gray>Your inventory from an unfinished RingOut game was restored."
+  snapshot-pending: "<red>Your items from an earlier RingOut game could not be restored yet. Ask an admin for help."
+  snapshot-save-failed: "<red>Your inventory could not be saved, so you can't join right now."
+  arena-busy: "<red>The arena is being built, try again in a moment."

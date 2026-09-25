@@ -26,7 +26,7 @@ import me.emirtemur.ringout.game.GameListener;
 import me.emirtemur.ringout.game.SnapshotStore;
 import me.emirtemur.ringout.item.ItemPool;
 import org.bukkit.Bukkit;
-import org.bukkit.GameRule;
+import org.bukkit.GameRules;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.configuration.ConfigurationSection;
@@ -256,11 +256,12 @@ public final class RingOutPlugin extends JavaPlugin {
                 .generateStructures(false)
                 .createWorld();
         if (world != null) {
-            world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
-            world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
-            world.setGameRule(GameRule.DO_MOB_SPAWNING, false);
-            world.setGameRule(GameRule.DO_FIRE_TICK, false);
-            world.setGameRule(GameRule.ANNOUNCE_ADVANCEMENTS, false);
+            world.setGameRule(GameRules.ADVANCE_TIME, false);
+            world.setGameRule(GameRules.ADVANCE_WEATHER, false);
+            world.setGameRule(GameRules.SPAWN_MOBS, false);
+            // 0 = fire never spreads (replaces the old doFireTick=false).
+            world.setGameRule(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER, 0);
+            world.setGameRule(GameRules.SHOW_ADVANCEMENT_MESSAGES, false);
             world.setTime(6000);
             world.setStorm(false);
             world.setSpawnLocation(arena.centerX(), arena.centerY() + 1, arena.centerZ());

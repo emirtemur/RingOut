@@ -17,7 +17,7 @@ A colorful ring split into slices floats over the void. Every player spawns on a
 
 ## Requirements
 
-- Paper 1.21.4
+- Paper 1.21.11
 - Java 21
 
 ## Installation

@@ -69,7 +69,7 @@ Players with `ringout.bypass` (op by default) keep their inventory and game mode
 - `plugins/RingOut/arenas/<arena>.yml`: one file per arena with its location, size, colors and lobby.
 - `plugins/RingOut/menus/<menu>.yml`: menus laid out like DeluxeMenus (title, size, items with material, slots, name, lore and click commands such as `[join]`, `[close]`, `[player]`, `[console]`, `[message]` and `[sound]`). `arenas.yml` is the menu the hub compass opens; its `arena_list` item repeats once per arena.
 
-A file with a YAML error is never overwritten: config.yml keeps its last working version, and a broken arena file is skipped until it is fixed. Upgrading from a single-arena version moves the old arena to `arenas/default.yml`.
+`config.yml` and the arena files are managed with [Okaeri Configs](https://github.com/OkaeriPoland/okaeri-configs): they are created with every setting and a comment on first start, and settings added in a newer version are filled in automatically. A file with a YAML error is never overwritten: config.yml keeps its last working version, and a broken arena file is skipped until it is fixed. Upgrading from a single-arena version moves the old arena to `arenas/default.yml`.
 
 ## Building
 

@@ -1,15 +1,13 @@
 package me.emirtemur.ringout.config;
 
+import eu.okaeri.configs.exception.OkaeriException;
 import java.util.List;
 import java.util.Objects;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.MemoryConfiguration;
-import org.bukkit.configuration.file.FileConfiguration;
 
-/** Typed, immutable view of config.yml (the hub lives in Hub, arenas in their own files). */
+/** Checked, immutable values from config.yml (the hub lives in Hub, arenas in their own files). */
 public final class Settings {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
@@ -42,41 +40,41 @@ public final class Settings {
 
     public final List<String> winCommands;
     /** Radius, slices and look for arenas created with /ro create. */
-    public final ConfigurationSection arenaDefaults;
+    public final PluginConfig.ArenaDefaults arenaDefaults;
 
-    private final FileConfiguration config;
+    private final Messages messages;
     private final String prefix;
 
-    public Settings(FileConfiguration config) {
-        this.config = config;
-        minPlayers = Math.max(1, config.getInt("game.min-players", 2));
-        maxPlayers = Math.max(minPlayers, config.getInt("game.max-players", 16));
-        autoStart = config.getBoolean("game.auto-start", true);
-        lobbyWait = Math.max(0, config.getInt("game.lobby-wait", 15));
-        countdown = Math.max(1, config.getInt("game.countdown", 5));
-        itemInterval = Math.max(1, config.getInt("game.item-interval", 8));
-        margin = Math.max(0, config.getDouble("game.margin", 0.5));
-        outsideGraceTicks = Math.max(0, config.getInt("game.outside-grace-ticks", 20));
-        fallDepth = Math.max(1, config.getInt("game.fall-depth", 5));
-        pvpDamage = config.getBoolean("game.pvp-damage", true);
-        explosionsBreakArena = config.getBoolean("game.explosions-break-arena", true);
-        autoPrimeTnt = config.getBoolean("game.auto-prime-tnt", true);
-        tntFuseTicks = Math.max(1, config.getInt("game.tnt-fuse-ticks", 40));
-        spectatorMaxDistance = Math.max(0, config.getInt("game.spectator-max-distance", 0));
-        endingSeconds = Math.max(1, config.getInt("game.ending-seconds", 8));
-        blocksPerTick = Math.max(100, config.getInt("game.blocks-per-tick", 2000));
-        menuSlot = Math.max(0, Math.min(8, config.getInt("hub.menu-slot", 4)));
-        hubMenu = Objects.requireNonNullElse(config.getString("hub.menu"), "arenas");
+    public Settings(PluginConfig config) {
+        PluginConfig.Game game = config.game;
+        minPlayers = Math.max(1, game.minPlayers);
+        maxPlayers = Math.max(minPlayers, game.maxPlayers);
+        autoStart = game.autoStart;
+        lobbyWait = Math.max(0, game.lobbyWait);
+        countdown = Math.max(1, game.countdown);
+        itemInterval = Math.max(1, game.itemInterval);
+        margin = Math.max(0, game.margin);
+        outsideGraceTicks = Math.max(0, game.outsideGraceTicks);
+        fallDepth = Math.max(1, game.fallDepth);
+        pvpDamage = game.pvpDamage;
+        explosionsBreakArena = game.explosionsBreakArena;
+        autoPrimeTnt = game.autoPrimeTnt;
+        tntFuseTicks = Math.max(1, game.tntFuseTicks);
+        spectatorMaxDistance = Math.max(0, game.spectatorMaxDistance);
+        endingSeconds = Math.max(1, game.endingSeconds);
+        blocksPerTick = Math.max(100, game.blocksPerTick);
+        menuSlot = Math.max(0, Math.min(8, config.hub.menuSlot));
+        hubMenu = Objects.requireNonNullElse(config.hub.menu, "arenas");
 
-        suddenDeathEnabled = config.getBoolean("sudden-death.enabled", true);
-        suddenDeathStartAfter = Math.max(0, config.getInt("sudden-death.start-after", 300));
-        shrinkInterval = Math.max(1, config.getInt("sudden-death.shrink-interval", 5));
-        minRadius = Math.max(1, config.getInt("sudden-death.min-radius", 3));
+        suddenDeathEnabled = config.suddenDeath.enabled;
+        suddenDeathStartAfter = Math.max(0, config.suddenDeath.startAfter);
+        shrinkInterval = Math.max(1, config.suddenDeath.shrinkInterval);
+        minRadius = Math.max(1, config.suddenDeath.minRadius);
 
-        winCommands = List.copyOf(config.getStringList("win-commands"));
-        ConfigurationSection defaults = config.getConfigurationSection("arena-defaults");
-        arenaDefaults = defaults != null ? defaults : new MemoryConfiguration();
-        prefix = Objects.requireNonNullElse(config.getString("messages.prefix"), "");
+        winCommands = config.winCommands != null ? List.copyOf(config.winCommands) : List.of();
+        arenaDefaults = config.arenaDefaults;
+        messages = config.messages;
+        prefix = Objects.requireNonNullElse(messages.prefix, "");
     }
 
     /** A chat message with the prefix. */
@@ -94,10 +92,14 @@ public final class Settings {
         return rawString(key);
     }
 
+    /** Looks the message up by its key in the file (e.g. "arena-not-found"); unknown keys show as themselves. */
     private String rawString(String key) {
-        // No explicit default here, so keys missing from an older config.yml fall back to the jar's copy.
-        String value = config.getString("messages." + key);
-        return value != null ? value : key;
+        try {
+            Object value = messages.get(key);
+            return value != null ? value.toString() : key;
+        } catch (OkaeriException e) {
+            return key;
+        }
     }
 
     public static MiniMessage mini() {

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
+import me.emirtemur.ringout.config.PluginConfig.ItemEntry;
 import me.emirtemur.ringout.config.Settings;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -30,29 +31,26 @@ public final class ItemPool {
         this.totalWeight = entries.stream().mapToInt(Entry::weight).sum();
     }
 
-    public static ItemPool load(List<Map<?, ?>> raw, Logger log) {
+    public static ItemPool load(List<ItemEntry> raw, Logger log) {
         List<Entry> entries = new ArrayList<>();
-        for (int i = 0; i < raw.size(); i++) {
-            Map<?, ?> map = raw.get(i);
+        List<ItemEntry> list = raw != null ? raw : List.of();
+        for (int i = 0; i < list.size(); i++) {
+            ItemEntry config = list.get(i);
             String where = "items[" + i + "]";
-            ItemStack main = parseItem(map, log, where);
+            ItemStack main = config != null ? parseItem(config, log, where) : null;
             if (main == null) {
                 continue;
             }
             List<ItemStack> items = new ArrayList<>();
             items.add(main);
-            if (map.get("extra") instanceof List<?> extras) {
-                for (int j = 0; j < extras.size(); j++) {
-                    if (extras.get(j) instanceof Map<?, ?> extraMap) {
-                        ItemStack extra = parseItem(extraMap, log, where + ".extra[" + j + "]");
-                        if (extra != null) {
-                            items.add(extra);
-                        }
-                    }
+            List<ItemEntry> extras = config.extra != null ? config.extra : List.of();
+            for (int j = 0; j < extras.size(); j++) {
+                ItemStack extra = extras.get(j) != null ? parseItem(extras.get(j), log, where + ".extra[" + j + "]") : null;
+                if (extra != null) {
+                    items.add(extra);
                 }
             }
-            int weight = Math.max(1, number(map.get("weight"), 1));
-            entries.add(new Entry(List.copyOf(items), weight));
+            entries.add(new Entry(List.copyOf(items), Math.max(1, config.weight)));
         }
         if (entries.isEmpty()) {
             log.warning("The item pool is empty, players will not receive items.");
@@ -79,37 +77,36 @@ public final class ItemPool {
         return entries.size();
     }
 
-    private static ItemStack parseItem(Map<?, ?> map, Logger log, String where) {
-        Object materialName = map.get("material");
-        Material material = materialName == null ? null : Material.matchMaterial(materialName.toString());
+    private static ItemStack parseItem(ItemEntry config, Logger log, String where) {
+        Material material = config.material == null ? null : Material.matchMaterial(config.material);
         if (material == null || !material.isItem() || material.isAir()) {
-            log.warning("Invalid material '" + materialName + "' in " + where + ", skipping it.");
+            log.warning("Invalid material '" + config.material + "' in " + where + ", skipping it.");
             return null;
         }
-        int amount = Math.max(1, Math.min(material.getMaxStackSize(), number(map.get("amount"), 1)));
+        int amount = Math.max(1, Math.min(material.getMaxStackSize(), config.amount));
         ItemStack item = new ItemStack(material, amount);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
             return item;
         }
 
-        if (map.get("name") instanceof String name) {
-            meta.displayName(noItalic(Settings.mini().deserialize(name)));
+        if (config.name != null && !config.name.isEmpty()) {
+            meta.displayName(noItalic(Settings.mini().deserialize(config.name)));
         }
-        if (map.get("lore") instanceof List<?> lore) {
-            meta.lore(lore.stream().map(line -> noItalic(Settings.mini().deserialize(String.valueOf(line)))).toList());
+        if (config.lore != null && !config.lore.isEmpty()) {
+            meta.lore(config.lore.stream().map(line -> noItalic(Settings.mini().deserialize(line))).toList());
         }
-        if (Boolean.TRUE.equals(map.get("unbreakable"))) {
+        if (config.unbreakable) {
             meta.setUnbreakable(true);
         }
-        if (map.get("enchantments") instanceof Map<?, ?> enchantments) {
-            for (Map.Entry<?, ?> e : enchantments.entrySet()) {
-                Enchantment enchantment = enchantment(String.valueOf(e.getKey()));
+        if (config.enchantments != null) {
+            for (Map.Entry<String, Integer> e : config.enchantments.entrySet()) {
+                Enchantment enchantment = enchantment(e.getKey());
                 if (enchantment == null) {
                     log.warning("Unknown enchantment '" + e.getKey() + "' in " + where + ", skipping it.");
                     continue;
                 }
-                meta.addEnchant(enchantment, Math.max(1, number(e.getValue(), 1)), true);
+                meta.addEnchant(enchantment, Math.max(1, e.getValue() != null ? e.getValue() : 1), true);
             }
         }
         item.setItemMeta(meta);
@@ -126,9 +123,5 @@ public final class ItemPool {
 
     private static Component noItalic(Component component) {
         return component.decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
-    }
-
-    private static int number(Object value, int fallback) {
-        return value instanceof Number n ? n.intValue() : fallback;
     }
 }

@@ -175,7 +175,7 @@ public final class RingOutCommand implements TabExecutor {
             return;
         }
         int y = ringY(sender, args, 2, location);
-        int radius = Math.max(3, Math.min(100, settings().arenaDefaults.getInt("radius", 20)));
+        int radius = Math.max(3, Math.min(100, settings().arenaDefaults.radius));
         if (overlapRefused(sender, null, location.getWorld().getName(), location.getBlockX(), location.getBlockZ(), radius)) {
             return;
         }

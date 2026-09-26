@@ -1,11 +1,11 @@
 package me.emirtemur.ringout.hub;
 
+import me.emirtemur.ringout.config.PluginConfig;
 import me.emirtemur.ringout.util.Players;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 
 /**
@@ -26,31 +26,30 @@ public final class Hub {
     private float yaw;
     private float pitch;
 
-    public static Hub load(ConfigurationSection sec) {
+    public static Hub load(PluginConfig.Hub config) {
         Hub hub = new Hub();
-        if (sec == null) {
+        if (config == null) {
             return hub;
         }
-        hub.set = sec.getBoolean("set", false);
-        hub.world = sec.getString("world", "");
-        hub.x = sec.getDouble("x");
-        hub.y = sec.getDouble("y");
-        hub.z = sec.getDouble("z");
-        hub.yaw = (float) sec.getDouble("yaw");
-        hub.pitch = (float) sec.getDouble("pitch");
+        hub.set = config.set;
+        hub.world = config.world != null ? config.world : "";
+        hub.x = config.x;
+        hub.y = config.y;
+        hub.z = config.z;
+        hub.yaw = config.yaw;
+        hub.pitch = config.pitch;
         return hub;
     }
 
-    public void save(ConfigurationSection sec) {
-        sec.set("set", set);
-        if (set) {
-            sec.set("world", world);
-            sec.set("x", x);
-            sec.set("y", y);
-            sec.set("z", z);
-            sec.set("yaw", yaw);
-            sec.set("pitch", pitch);
-        }
+    /** Writes only the location keys; menu-slot and menu in the same section stay as they are. */
+    public void save(PluginConfig.Hub config) {
+        config.set = set;
+        config.world = world;
+        config.x = x;
+        config.y = y;
+        config.z = z;
+        config.yaw = yaw;
+        config.pitch = pitch;
     }
 
     public void setLocation(Location location) {

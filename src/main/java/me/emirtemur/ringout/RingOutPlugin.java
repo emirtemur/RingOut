@@ -1,17 +1,16 @@
 package me.emirtemur.ringout;
 
+import eu.okaeri.configs.exception.OkaeriException;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.logging.Level;
 import me.emirtemur.ringout.arena.ArenaBuilder;
 import me.emirtemur.ringout.arena.Arenas;
 import me.emirtemur.ringout.arena.VoidGenerator;
 import me.emirtemur.ringout.command.RingOutCommand;
+import me.emirtemur.ringout.config.Configs;
+import me.emirtemur.ringout.config.PluginConfig;
 import me.emirtemur.ringout.config.Settings;
 import me.emirtemur.ringout.game.Game;
 import me.emirtemur.ringout.game.GameListener;
@@ -22,13 +21,10 @@ import me.emirtemur.ringout.menu.MenuItem;
 import me.emirtemur.ringout.menu.MenuListener;
 import me.emirtemur.ringout.menu.Menus;
 import me.emirtemur.ringout.util.FailureLog;
-import me.emirtemur.ringout.util.SafeYaml;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.configuration.InvalidConfigurationException;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
@@ -56,7 +52,7 @@ public final class RingOutPlugin extends JavaPlugin {
         loadConfiguration();
         arenaBuilder = new ArenaBuilder(this);
         arenas = new Arenas(this);
-        arenas.load(configSavable ? getConfig() : null);
+        arenas.load(configSavable ? rawConfig() : null);
         loadArenaWorlds();
         menus = new Menus(this);
         menus.load();
@@ -108,59 +104,62 @@ public final class RingOutPlugin extends JavaPlugin {
     }
 
     /**
-     * (Re)reads config.yml. Only call while no game is running. If the file cannot be parsed,
-     * the previous configuration stays active (jar defaults on startup) and hub changes are
-     * not saved until it loads again. Returns false when the file could not be parsed.
+     * (Re)reads config.yml through Okaeri. Only call while no game is running. A file that parses
+     * is written back with any keys it was missing (new settings after an update); a file that
+     * does not parse is never written, the previous configuration stays active (the defaults on
+     * startup) and hub changes are not saved until it loads again. Returns false on a parse error.
      */
     public boolean loadConfiguration() {
-        saveDefaultConfig();
+        File file = configFile();
+        PluginConfig loaded;
         try {
-            new YamlConfiguration().load(configFile());
-        } catch (IOException | InvalidConfigurationException e) {
-            getLogger().severe("config.yml could not be parsed, hub changes will not be saved until it is fixed: "
+            loaded = Configs.read(PluginConfig.class, file);
+        } catch (IOException | OkaeriException e) {
+            getLogger().severe("config.yml could not be loaded, hub changes will not be saved until it is fixed: "
                     + e.getMessage());
             configSavable = false;
             if (settings == null) {
-                // First load: run on the jar's config.yml. Not via getConfig(), which would parse
-                // the broken file again and log a second stack trace.
-                applyConfiguration(jarDefaults());
+                applyConfiguration(Configs.create(PluginConfig.class));
             }
             return false;
         }
-        reloadConfig();
+        try {
+            Configs.writeIfChanged(loaded, file);
+        } catch (IOException | OkaeriException e) {
+            getLogger().log(Level.WARNING, "Could not add missing keys to config.yml", e);
+        }
         configSavable = true;
         failures.clear("config");
-        applyConfiguration(getConfig());
+        applyConfiguration(loaded);
         return true;
     }
 
     /** Reloads config.yml and every arena file. Only call while all arenas are idle. */
     public boolean reloadAll() {
         boolean configLoaded = loadConfiguration();
-        arenas.load(configSavable ? getConfig() : null);
+        arenas.load(configSavable ? rawConfig() : null);
         loadArenaWorlds();
         menus.closeAll();
         menus.load();
         return configLoaded;
     }
 
-    private void applyConfiguration(FileConfiguration config) {
+    private void applyConfiguration(PluginConfig config) {
         settings = new Settings(config);
-        itemPool = ItemPool.load(config.getMapList("items"), getLogger());
-        hub = Hub.load(config.getConfigurationSection("hub"));
-    }
-
-    private YamlConfiguration jarDefaults() {
-        InputStream stream = Objects.requireNonNull(getResource("config.yml"), "config.yml missing from the jar");
-        try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-            return YamlConfiguration.loadConfiguration(reader);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not read the default config.yml", e);
-        }
+        itemPool = ItemPool.load(config.items, getLogger());
+        hub = Hub.load(config.hub);
     }
 
     /**
-     * Writes only the hub section into config.yml as it is on disk right now, so edits made to
+     * config.yml as plain YAML, for the one-time move of the old "arena" section (a key the
+     * current config no longer has, kept in the file because orphans are not removed).
+     */
+    private YamlConfiguration rawConfig() {
+        return YamlConfiguration.loadConfiguration(configFile());
+    }
+
+    /**
+     * Writes only the hub location into config.yml as it is on disk right now, so edits made to
      * the file since the last reload are kept. Nothing is written if the last load failed or the
      * file does not parse at this moment. Returns false when the change was not saved.
      */
@@ -170,10 +169,20 @@ public final class RingOutPlugin extends JavaPlugin {
                     "config.yml failed to load, so hub changes are not saved.", null);
             return false;
         }
+        File file = configFile();
+        PluginConfig onDisk;
         try {
-            SafeYaml.update(configFile(), "hub", hub::save);
-        } catch (SafeYaml.SaveException e) {
-            failures.fail("config", e.level(), e.getMessage(), e.getCause());
+            onDisk = Configs.read(PluginConfig.class, file);
+        } catch (IOException | OkaeriException e) {
+            failures.fail("config", Level.WARNING,
+                    "config.yml currently has an error, hub changes are not saved: " + e.getMessage(), null);
+            return false;
+        }
+        hub.save(onDisk.hub);
+        try {
+            Configs.write(onDisk, file);
+        } catch (IOException | OkaeriException e) {
+            failures.fail("config", Level.SEVERE, "Could not save config.yml", e);
             return false;
         }
         failures.clear("config");

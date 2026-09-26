@@ -1,5 +1,6 @@
 package me.emirtemur.ringout.arena;
 
+import eu.okaeri.configs.exception.OkaeriException;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -14,14 +15,13 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
 import me.emirtemur.ringout.RingOutPlugin;
+import me.emirtemur.ringout.config.Configs;
 import me.emirtemur.ringout.game.Game;
 import me.emirtemur.ringout.util.FailureLog;
 import me.emirtemur.ringout.util.SafeYaml;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
 /**
@@ -79,15 +79,21 @@ public final class Arenas {
                 plugin.getLogger().warning("Skipping " + file.getName() + ": arena names may only use a-z, 0-9, _ and -.");
                 continue;
             }
-            YamlConfiguration yaml = new YamlConfiguration();
+            ArenaConfig arenaConfig;
             try {
-                yaml.load(file);
-            } catch (IOException | InvalidConfigurationException e) {
+                arenaConfig = Configs.read(ArenaConfig.class, file);
+            } catch (IOException | OkaeriException e) {
                 plugin.getLogger().severe("Arena " + name + " is not loaded because " + file.getName()
                         + " has an error: " + e.getMessage());
                 continue;
             }
-            Arena arena = Arena.load(name, yaml, plugin.getLogger());
+            // The file parsed, so it is safe to write back with any keys it was missing.
+            try {
+                Configs.writeIfChanged(arenaConfig, file);
+            } catch (IOException | OkaeriException e) {
+                plugin.getLogger().log(Level.WARNING, "Could not add missing keys to " + file.getName(), e);
+            }
+            Arena arena = Arena.load(name, arenaConfig, plugin.getLogger());
             games.put(name, new Game(plugin, arena));
         }
         warnAboutOverlaps();
@@ -212,13 +218,18 @@ public final class Arenas {
     /** Creates and saves a new arena. Returns null if its file could not be written. */
     public Game create(Arena arena) {
         File file = file(arena.name());
+        if (file.exists()) {
+            // Most likely a file that failed to load; never overwrite it with a fresh arena.
+            plugin.getLogger().warning("Not creating arena " + arena.name() + ": " + file.getName() + " already exists.");
+            return null;
+        }
+        ArenaConfig config = Configs.create(ArenaConfig.class);
+        arena.save(config);
+        arena.saveAppearance(config);
         try {
-            SafeYaml.update(file, null, root -> {
-                arena.save(root);
-                arena.saveAppearance(root);
-            });
-        } catch (SafeYaml.SaveException e) {
-            plugin.getLogger().log(e.level(), e.getMessage(), e.getCause());
+            Configs.write(config, file);
+        } catch (IOException | OkaeriException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save " + file.getName(), e);
             return null;
         }
         arena.markSaved();
@@ -266,11 +277,26 @@ public final class Arenas {
         }
     }
 
-    private boolean update(Arena arena, Consumer<ConfigurationSection> writer) {
+    /**
+     * Re-reads the arena file as it is on disk right now, applies only this change and writes it
+     * atomically, so edits made to the file since the last reload are kept. Nothing is written
+     * when the file does not parse at this moment.
+     */
+    private boolean update(Arena arena, Consumer<ArenaConfig> writer) {
+        File file = file(arena.name());
+        ArenaConfig config;
         try {
-            SafeYaml.update(file(arena.name()), null, writer);
-        } catch (SafeYaml.SaveException e) {
-            failures.fail(arena.name(), e.level(), "Arena " + arena.name() + ": " + e.getMessage(), e.getCause());
+            config = Configs.read(ArenaConfig.class, file);
+        } catch (IOException | OkaeriException e) {
+            failures.fail(arena.name(), Level.WARNING, "Arena " + arena.name() + ": " + file.getName()
+                    + " currently has an error, changes are not saved: " + e.getMessage(), null);
+            return false;
+        }
+        writer.accept(config);
+        try {
+            Configs.write(config, file);
+        } catch (IOException | OkaeriException e) {
+            failures.fail(arena.name(), Level.SEVERE, "Arena " + arena.name() + ": could not save " + file.getName(), e);
             return false;
         }
         failures.clear(arena.name());

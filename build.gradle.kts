@@ -1,3 +1,4 @@
+import net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission
 import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.Yaml
 
@@ -12,15 +13,20 @@ buildscript {
 
 plugins {
     java
+    id("com.gradleup.shadow") version "9.6.1"
+    id("de.eldoria.plugin-yml.bukkit") version "0.9.0"
     id("xyz.jpenilla.run-paper") version "3.1.0"
 }
 
 group = "me.emirtemur"
-version = "1.0.3"
+version = "1.0.4"
+
+val okaeriVersion = "6.1.0-beta.4"
 
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://storehouse.okaeri.eu/repository/maven-public/")
     // Last and Paper only, so a stale local artifact can't make local builds differ from CI.
     mavenLocal {
         content {
@@ -31,13 +37,53 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    implementation("eu.okaeri:okaeri-configs-yaml-bukkit:$okaeriVersion")
+
+    // Config tests run Okaeri with Bukkit's YAML without a server.
+    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(21))
 }
 
-// Fails the build on broken YAML in the bundled resources, so a typo in config.yml can never ship
+// plugin.yml is generated from here; there is no plugin.yml in the resources.
+bukkit {
+    name = "RingOut"
+    main = "me.emirtemur.ringout.RingOutPlugin"
+    apiVersion = "1.21"
+    version = project.version.toString()
+    authors = listOf("emirtemur")
+    description = "Last one standing inside the ring wins."
+
+    commands {
+        register("ringout") {
+            description = "RingOut minigame commands."
+            usage = "/<command> <join|leave|list|menu|create|delete|setcenter|setlobby|radius|slices|build|start|stop|sethub|createworld|reload>"
+            aliases = listOf("ro")
+        }
+    }
+
+    permissions {
+        register("ringout.play") {
+            description = "Join and leave RingOut games, list the arenas and open the arena menu."
+            default = Permission.Default.TRUE
+        }
+        register("ringout.admin") {
+            description = "Set up and control RingOut arenas."
+            default = Permission.Default.OP
+        }
+        register("ringout.bypass") {
+            description = "Keep your inventory and game mode on server join and change the hub (for building). " +
+                "Joining a game still resets you."
+            default = Permission.Default.OP
+        }
+    }
+}
+
+// Fails the build on broken YAML in the bundled resources, so a typo in a menu can never ship
 // in a jar that "builds fine". Besides syntax errors and duplicate keys it rejects odd key names:
 // a missing space in `key:"value"` still parses, but turns part of the value into a key.
 val validateYaml = tasks.register("validateYaml") {
@@ -82,12 +128,29 @@ tasks {
 
     processResources {
         dependsOn(validateYaml)
-        val props = mapOf("version" to project.version)
-        inputs.properties(props)
         filteringCharset = "UTF-8"
-        filesMatching("plugin.yml") {
-            expand(props)
-        }
+    }
+
+    // Only the shadow jar (with Okaeri inside) is the plugin; a plain jar next to it would just
+    // be the wrong file to copy.
+    jar {
+        enabled = false
+    }
+
+    shadowJar {
+        archiveClassifier.set("")
+        // Okaeri is not on the server, so it ships inside the jar under our own package.
+        relocate("eu.okaeri", "me.emirtemur.ringout.libs.okaeri")
+        // No minimize(): Okaeri resolves config classes by reflection.
+        mergeServiceFiles()
+    }
+
+    build {
+        dependsOn(shadowJar)
+    }
+
+    test {
+        useJUnitPlatform()
     }
 
     runServer {

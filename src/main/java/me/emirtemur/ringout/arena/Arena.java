@@ -3,12 +3,12 @@ package me.emirtemur.ringout.arena;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
+import me.emirtemur.ringout.config.PluginConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.util.Vector;
 
 /** One ring: geometry, look and lobby, persisted in arenas/<name>.yml. */
@@ -51,10 +51,33 @@ public final class Arena {
         this.coreRadius = coreRadius;
     }
 
-    public static Arena load(String name, ConfigurationSection sec, Logger log) {
+    public static Arena load(String name, ArenaConfig config, Logger log) {
+        Arena arena = withLook(name, config.colors, config.edge, config.core, config.coreRadius, log);
+        arena.worldName = config.world != null ? config.world : "ringout_world";
+        ArenaConfig.Center center = config.center != null ? config.center : new ArenaConfig.Center();
+        arena.centerX = center.x;
+        arena.centerY = center.y;
+        arena.centerZ = center.z;
+        arena.radius = clamp(config.radius, 3, 100);
+        arena.slices = clamp(config.slices, 2, 16);
+        ArenaConfig.Lobby lobby = config.lobby != null ? config.lobby : new ArenaConfig.Lobby();
+        arena.hasLobby = lobby.set;
+        arena.lobbyWorld = lobby.world != null && !lobby.world.isEmpty() ? lobby.world : arena.worldName;
+        arena.lobbyX = lobby.x;
+        arena.lobbyY = lobby.y;
+        arena.lobbyZ = lobby.z;
+        arena.lobbyYaw = lobby.yaw;
+        arena.lobbyPitch = lobby.pitch;
+        arena.built = config.built;
+        arena.builtRadius = config.builtRadius;
+        return arena;
+    }
+
+    private static Arena withLook(String name, List<String> colorNames, String edgeName, String coreName,
+                                  int coreRadius, Logger log) {
         String where = name + ".yml";
         List<Material> colors = new ArrayList<>();
-        for (String color : sec.getStringList("colors")) {
+        for (String color : colorNames != null ? colorNames : List.<String>of()) {
             Material material = parseBlock(color, log, where + " colors");
             if (material != null) {
                 colors.add(material);
@@ -63,49 +86,32 @@ public final class Arena {
         if (colors.isEmpty()) {
             colors.add(Material.WHITE_CONCRETE);
         }
-        Material edge = parseBlock(sec.getString("edge", "WHITE_CONCRETE"), log, where + " edge");
-        Material core = parseBlock(sec.getString("core", "OBSIDIAN"), log, where + " core");
-
-        Arena arena = new Arena(name, colors,
+        Material edge = parseBlock(edgeName, log, where + " edge");
+        Material core = parseBlock(coreName, log, where + " core");
+        return new Arena(name, colors,
                 edge != null ? edge : Material.WHITE_CONCRETE,
                 core != null ? core : Material.OBSIDIAN,
-                Math.max(0, sec.getInt("core-radius", 2)));
-        arena.worldName = sec.getString("world", "ringout_world");
-        arena.centerX = sec.getInt("center.x", 0);
-        arena.centerY = sec.getInt("center.y", 150);
-        arena.centerZ = sec.getInt("center.z", 0);
-        arena.radius = clamp(sec.getInt("radius", 20), 3, 100);
-        arena.slices = clamp(sec.getInt("slices", 8), 2, 16);
-        arena.hasLobby = sec.getBoolean("lobby.set", false);
-        arena.lobbyWorld = sec.getString("lobby.world", arena.worldName);
-        arena.lobbyX = sec.getDouble("lobby.x");
-        arena.lobbyY = sec.getDouble("lobby.y");
-        arena.lobbyZ = sec.getDouble("lobby.z");
-        arena.lobbyYaw = (float) sec.getDouble("lobby.yaw");
-        arena.lobbyPitch = (float) sec.getDouble("lobby.pitch");
-        arena.built = sec.getBoolean("built", false);
-        arena.builtRadius = sec.getInt("built-radius", 0);
-        return arena;
+                Math.max(0, coreRadius));
     }
 
-    public void save(ConfigurationSection sec) {
-        sec.set("world", worldName);
-        sec.set("center.x", centerX);
-        sec.set("center.y", centerY);
-        sec.set("center.z", centerZ);
-        sec.set("radius", radius);
-        sec.set("slices", slices);
-        sec.set("lobby.set", hasLobby);
+    /** Writes the settings /ro commands change (not the look). */
+    public void save(ArenaConfig config) {
+        config.world = worldName;
+        config.center.x = centerX;
+        config.center.y = centerY;
+        config.center.z = centerZ;
+        config.radius = radius;
+        config.slices = slices;
+        config.lobby.set = hasLobby;
         if (hasLobby) {
-            sec.set("lobby.world", lobbyWorld);
-            sec.set("lobby.x", lobbyX);
-            sec.set("lobby.y", lobbyY);
-            sec.set("lobby.z", lobbyZ);
-            sec.set("lobby.yaw", lobbyYaw);
-            sec.set("lobby.pitch", lobbyPitch);
+            config.lobby.world = lobbyWorld;
+            config.lobby.x = lobbyX;
+            config.lobby.y = lobbyY;
+            config.lobby.z = lobbyZ;
+            config.lobby.yaw = lobbyYaw;
+            config.lobby.pitch = lobbyPitch;
         }
-        sec.set("built", built);
-        sec.set("built-radius", builtRadius);
+        saveBuildState(config);
     }
 
     /**
@@ -113,18 +119,20 @@ public final class Arena {
      * of config.yml; afterwards each arena file can be tuned on its own.
      */
     public static Arena create(String name, String worldName, int x, int y, int z,
-                               ConfigurationSection defaults, Logger log) {
-        Arena arena = load(name, defaults, log);
+                               PluginConfig.ArenaDefaults defaults, Logger log) {
+        Arena arena = withLook(name, defaults.colors, defaults.edge, defaults.core, defaults.coreRadius, log);
+        arena.radius = clamp(defaults.radius, 3, 100);
+        arena.slices = clamp(defaults.slices, 2, 16);
         arena.setCenter(worldName, x, y, z);
         return arena;
     }
 
     /** Writes the look (colors, edge, core); only done when the file is created. */
-    public void saveAppearance(ConfigurationSection sec) {
-        sec.set("colors", colors.stream().map(Material::name).toList());
-        sec.set("edge", edge.name());
-        sec.set("core", core.name());
-        sec.set("core-radius", coreRadius);
+    public void saveAppearance(ArenaConfig config) {
+        config.colors = new ArrayList<>(colors.stream().map(Material::name).toList());
+        config.edge = edge.name();
+        config.core = core.name();
+        config.coreRadius = coreRadius;
     }
 
     /**
@@ -268,9 +276,9 @@ public final class Arena {
     }
 
     /** Writes only the build state, leaving the other arena keys on disk untouched. */
-    public void saveBuildState(ConfigurationSection sec) {
-        sec.set("built", built);
-        sec.set("built-radius", builtRadius);
+    public void saveBuildState(ArenaConfig config) {
+        config.built = built;
+        config.builtRadius = builtRadius;
     }
 
     public void setCenter(String worldName, int x, int y, int z) {

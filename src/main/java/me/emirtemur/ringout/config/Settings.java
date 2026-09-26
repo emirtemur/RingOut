@@ -7,7 +7,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 
-/** Checked, immutable values from config.yml (the hub lives in Hub, arenas in their own files). */
+/** Checked, immutable values from config.yml and the texts of messages.yml (the hub lives in Hub, arenas in their own files). */
 public final class Settings {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
@@ -45,7 +45,7 @@ public final class Settings {
     private final Messages messages;
     private final String prefix;
 
-    public Settings(PluginConfig config) {
+    public Settings(PluginConfig config, Messages messages) {
         PluginConfig.Game game = config.game;
         minPlayers = Math.max(1, game.minPlayers);
         maxPlayers = Math.max(minPlayers, game.maxPlayers);
@@ -73,7 +73,7 @@ public final class Settings {
 
         winCommands = config.winCommands != null ? List.copyOf(config.winCommands) : List.of();
         arenaDefaults = config.arenaDefaults;
-        messages = config.messages;
+        this.messages = messages;
         prefix = Objects.requireNonNullElse(messages.prefix, "");
     }
 

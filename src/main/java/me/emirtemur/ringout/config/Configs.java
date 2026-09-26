@@ -42,6 +42,27 @@ public final class Configs {
         return config;
     }
 
+    /**
+     * The whole cause chain of a load error in one line. Okaeri's own message ("failed #load")
+     * hides the useful part, like SnakeYAML's line and column of a broken file.
+     */
+    public static String describe(Throwable error) {
+        StringBuilder text = new StringBuilder();
+        String previous = null;
+        for (Throwable current = error; current != null && current != current.getCause(); current = current.getCause()) {
+            String message = current.getMessage();
+            if (message == null || message.isBlank() || message.equals(previous)) {
+                continue;
+            }
+            if (!text.isEmpty()) {
+                text.append(" <- ");
+            }
+            text.append(message.strip().replaceAll("\\s+", " "));
+            previous = message;
+        }
+        return text.isEmpty() ? error.getClass().getSimpleName() : text.toString();
+    }
+
     /** Writes the whole config atomically, including keys the file did not have yet. */
     public static void write(OkaeriConfig config, File file) throws IOException, OkaeriException {
         SafeYaml.writeAtomically(file, new String(config.saveToBytes(), StandardCharsets.UTF_8));

@@ -84,7 +84,7 @@ public final class Arenas {
                 arenaConfig = Configs.read(ArenaConfig.class, file);
             } catch (IOException | OkaeriException e) {
                 plugin.getLogger().severe("Arena " + name + " is not loaded because " + file.getName()
-                        + " has an error: " + e.getMessage());
+                        + " has an error: " + Configs.describe(e));
                 continue;
             }
             // The file parsed, so it is safe to write back with any keys it was missing.
@@ -146,10 +146,6 @@ public final class Arenas {
         }
         plugin.getLogger().info("Moved the arena from config.yml to arenas/default.yml. "
                 + "The arena section in config.yml is no longer used and can be removed.");
-        if (config.isSet("messages")) {
-            plugin.getLogger().info("config.yml keeps the messages of the older version. Delete its messages "
-                    + "section (or single keys) to get the new texts from the plugin.");
-        }
     }
 
     // --- Lookup ------------------------------------------------------------
@@ -289,7 +285,7 @@ public final class Arenas {
             config = Configs.read(ArenaConfig.class, file);
         } catch (IOException | OkaeriException e) {
             failures.fail(arena.name(), Level.WARNING, "Arena " + arena.name() + ": " + file.getName()
-                    + " currently has an error, changes are not saved: " + e.getMessage(), null);
+                    + " currently has an error, changes are not saved: " + Configs.describe(e), null);
             return false;
         }
         writer.accept(config);
@@ -301,6 +297,11 @@ public final class Arenas {
         }
         failures.clear(arena.name());
         return true;
+    }
+
+    /** Whether arenas/&lt;name&gt;.yml exists, loaded or not (a broken file is skipped on load). */
+    public boolean hasFile(String name) {
+        return file(name).exists();
     }
 
     private File file(String name) {

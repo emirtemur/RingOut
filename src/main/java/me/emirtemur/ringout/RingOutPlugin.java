@@ -3,6 +3,8 @@ package me.emirtemur.ringout;
 import eu.okaeri.configs.exception.OkaeriException;
 import java.io.File;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.logging.Level;
 import me.emirtemur.ringout.arena.ArenaBuilder;
@@ -10,6 +12,7 @@ import me.emirtemur.ringout.arena.Arenas;
 import me.emirtemur.ringout.arena.VoidGenerator;
 import me.emirtemur.ringout.command.RingOutCommand;
 import me.emirtemur.ringout.config.Configs;
+import me.emirtemur.ringout.config.Messages;
 import me.emirtemur.ringout.config.PluginConfig;
 import me.emirtemur.ringout.config.Settings;
 import me.emirtemur.ringout.game.Game;
@@ -21,10 +24,12 @@ import me.emirtemur.ringout.menu.MenuItem;
 import me.emirtemur.ringout.menu.MenuListener;
 import me.emirtemur.ringout.menu.Menus;
 import me.emirtemur.ringout.util.FailureLog;
+import me.emirtemur.ringout.util.SafeYaml;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
@@ -35,6 +40,16 @@ public final class RingOutPlugin extends JavaPlugin {
     /** Void worlds spawn players just above the default ring height. */
     private static final int VOID_SPAWN_Y = 151;
 
+    /**
+     * Texts whose default changed after they were last kept in config.yml (1.0.4). When moving the
+     * messages out, a value still equal to its old default is dropped so the new default applies.
+     */
+    private static final Map<String, String> OUTDATED_DEFAULTS = Map.of(
+            "reload-failed", "<red>config.yml has an error, the previous configuration is kept and hub changes "
+                    + "are not saved. <count> arena(s) reloaded. Check the console.");
+
+    private PluginConfig pluginConfig;
+    private Messages messages;
     private Settings settings;
     /** False when the last load of config.yml failed, so the in-memory hub did not come from the file. */
     private boolean configSavable;
@@ -104,22 +119,33 @@ public final class RingOutPlugin extends JavaPlugin {
     }
 
     /**
-     * (Re)reads config.yml through Okaeri. Only call while no game is running. A file that parses
-     * is written back with any keys it was missing (new settings after an update); a file that
-     * does not parse is never written, the previous configuration stays active (the defaults on
-     * startup) and hub changes are not saved until it loads again. Returns false on a parse error.
+     * (Re)reads config.yml and messages.yml through Okaeri. Only call while no game is running.
+     * A file that parses is written back with any keys it was missing (new settings or texts after
+     * an update); a file that does not parse is never written and its previous version stays
+     * active (the defaults on startup). Returns false when either file could not be loaded.
      */
     public boolean loadConfiguration() {
+        boolean configLoaded = loadPluginConfig();
+        boolean messagesLoaded = loadMessages(configLoaded);
+        settings = new Settings(pluginConfig, messages);
+        return configLoaded && messagesLoaded;
+    }
+
+    /**
+     * config.yml. The item pool and hub are only rebuilt when it loads: after a failed reload the
+     * hub keeps the location set in this session. Hub changes are not saved until it loads again.
+     */
+    private boolean loadPluginConfig() {
         File file = configFile();
         PluginConfig loaded;
         try {
             loaded = Configs.read(PluginConfig.class, file);
         } catch (IOException | OkaeriException e) {
             getLogger().severe("config.yml could not be loaded, hub changes will not be saved until it is fixed: "
-                    + e.getMessage());
+                    + Configs.describe(e));
             configSavable = false;
-            if (settings == null) {
-                applyConfiguration(Configs.create(PluginConfig.class));
+            if (pluginConfig == null) {
+                usePluginConfig(Configs.create(PluginConfig.class));
             }
             return false;
         }
@@ -130,11 +156,81 @@ public final class RingOutPlugin extends JavaPlugin {
         }
         configSavable = true;
         failures.clear("config");
-        applyConfiguration(loaded);
+        usePluginConfig(loaded);
         return true;
     }
 
-    /** Reloads config.yml and every arena file. Only call while all arenas are idle. */
+    private void usePluginConfig(PluginConfig config) {
+        pluginConfig = config;
+        itemPool = ItemPool.load(config.items, getLogger());
+        hub = Hub.load(config.hub);
+    }
+
+    /**
+     * messages.yml. On the first start after messages moved out of config.yml it is created from
+     * the old messages section there, so edited texts are kept. That waits for a config.yml that
+     * loads, so a broken config.yml never leads to a messages.yml made of defaults only.
+     */
+    private boolean loadMessages(boolean configLoaded) {
+        File file = messagesFile();
+        Messages loaded;
+        boolean fromOldConfig = false;
+        try {
+            if (!file.exists()) {
+                if (!configLoaded) {
+                    messages = messages != null ? messages : Configs.create(Messages.class);
+                    return true;
+                }
+                loaded = Configs.create(Messages.class);
+                ConfigurationSection old = rawConfig().getConfigurationSection("messages");
+                if (old != null) {
+                    Map<String, Object> texts = new LinkedHashMap<>(old.getValues(false));
+                    // An old default that was never edited should become the new default, not stay.
+                    OUTDATED_DEFAULTS.forEach((key, oldDefault) -> texts.remove(key, oldDefault));
+                    loaded.load(texts);
+                    fromOldConfig = true;
+                }
+            } else {
+                loaded = Configs.read(Messages.class, file);
+            }
+        } catch (IOException | OkaeriException e) {
+            getLogger().severe("messages.yml could not be loaded, the previous texts are kept until it is fixed: "
+                    + Configs.describe(e));
+            if (messages == null) {
+                messages = Configs.create(Messages.class);
+            }
+            return false;
+        }
+        boolean written = true;
+        try {
+            Configs.writeIfChanged(loaded, file);
+        } catch (IOException | OkaeriException e) {
+            written = false;
+            getLogger().log(Level.WARNING, "Could not write messages.yml", e);
+        }
+        if (fromOldConfig && written) {
+            removeOldMessages();
+        }
+        messages = loaded;
+        return true;
+    }
+
+    /**
+     * Drops the messages section from config.yml once messages.yml holds it, so deleting
+     * messages.yml later gives the defaults instead of moving the old texts back.
+     */
+    private void removeOldMessages() {
+        try {
+            SafeYaml.update(configFile(), null, root -> root.set("messages", null));
+            getLogger().info("Moved the messages from config.yml to messages.yml. Texts you had not changed "
+                    + "keep their old wording; delete a line in messages.yml to get the new default text.");
+        } catch (SafeYaml.SaveException e) {
+            getLogger().log(e.level(), "Moved the messages to messages.yml, but could not remove them from "
+                    + "config.yml: " + e.getMessage(), e.getCause());
+        }
+    }
+
+    /** Reloads config.yml, messages.yml, every arena file and the menus. Only call while all arenas are idle. */
     public boolean reloadAll() {
         boolean configLoaded = loadConfiguration();
         arenas.load(configSavable ? rawConfig() : null);
@@ -142,12 +238,6 @@ public final class RingOutPlugin extends JavaPlugin {
         menus.closeAll();
         menus.load();
         return configLoaded;
-    }
-
-    private void applyConfiguration(PluginConfig config) {
-        settings = new Settings(config);
-        itemPool = ItemPool.load(config.items, getLogger());
-        hub = Hub.load(config.hub);
     }
 
     /**
@@ -175,7 +265,7 @@ public final class RingOutPlugin extends JavaPlugin {
             onDisk = Configs.read(PluginConfig.class, file);
         } catch (IOException | OkaeriException e) {
             failures.fail("config", Level.WARNING,
-                    "config.yml currently has an error, hub changes are not saved: " + e.getMessage(), null);
+                    "config.yml currently has an error, hub changes are not saved: " + Configs.describe(e), null);
             return false;
         }
         hub.save(onDisk.hub);
@@ -191,6 +281,10 @@ public final class RingOutPlugin extends JavaPlugin {
 
     private File configFile() {
         return new File(getDataFolder(), "config.yml");
+    }
+
+    private File messagesFile() {
+        return new File(getDataFolder(), "messages.yml");
     }
 
     /** Loads each arena's world on startup if it exists on disk but is not loaded yet. */

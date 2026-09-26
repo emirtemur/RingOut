@@ -170,6 +170,11 @@ public final class RingOutCommand implements TabExecutor {
             sender.sendMessage(settings().message("arena-exists", Placeholder.unparsed("arena", name)));
             return;
         }
+        if (arenas().hasFile(name)) {
+            // A file that failed to load; creating the arena would throw it away.
+            sender.sendMessage(settings().message("arena-file-exists", Placeholder.unparsed("arena", name)));
+            return;
+        }
         Location location = locationFrom(sender, args, 2);
         if (location == null) {
             return;

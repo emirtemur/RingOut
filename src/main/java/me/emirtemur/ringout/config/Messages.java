@@ -1,14 +1,21 @@
 package me.emirtemur.ringout.config;
 
 import eu.okaeri.configs.OkaeriConfig;
+import eu.okaeri.configs.annotation.Header;
 import eu.okaeri.configs.annotation.NameModifier;
 import eu.okaeri.configs.annotation.NameStrategy;
 import eu.okaeri.configs.annotation.Names;
 
 /**
- * Every text players see, in MiniMessage. Placeholders in angle brackets (<player>, <arena>...)
- * are filled in by the plugin. Looked up by key, see Settings#message.
+ * plugins/RingOut/messages.yml: every text players see, in MiniMessage. Placeholders in angle
+ * brackets (&lt;player&gt;, &lt;arena&gt;...) are filled in by the plugin. Looked up by key, see
+ * Settings#message. Missing keys are filled in with these defaults on load.
  */
+@Header({
+        "RingOut messages. Every text uses MiniMessage: https://docs.advntr.dev/minimessage/format.html",
+        "Words in angle brackets like <player>, <arena> or <count> are filled in by the plugin.",
+        "Delete a line to get its default text back on the next /ro reload."
+})
 @SuppressWarnings("deprecation")
 @Names(strategy = NameStrategy.HYPHEN_CASE, modifier = NameModifier.TO_LOWER_CASE)
 public class Messages extends OkaeriConfig {
@@ -68,6 +75,7 @@ public class Messages extends OkaeriConfig {
     public String stateEnding = "<red>ending";
     public String invalidArenaName = "<red>Arena names may only use a-z, 0-9, _ and - (up to 32 characters).";
     public String arenaExists = "<red>An arena called <white><arena></white> already exists.";
+    public String arenaFileExists = "<red>arenas/<arena>.yml already exists but is not loaded (it has an error). Fix or remove the file and run <yellow>/ro reload</yellow>.";
     public String arenaCreated = "<green>Arena <white><arena></white> created at <white><world> <x> <y> <z></white>. Run <yellow>/ro build <arena></yellow> to build it.";
     public String arenaCreateFailed = "<red>Could not save arenas/<arena>.yml, so the arena was not created. Check the console.";
     public String arenaDeleted = "<green>Arena <white><arena></white> deleted. Its blocks are still in the world.";
@@ -93,5 +101,5 @@ public class Messages extends OkaeriConfig {
     public String cannotWhileRunning = "<red>You can't do that while a game is running there.";
     public String reloadBusy = "<red>Reload only works while nobody is in a game and no arena is being built.";
     public String reloaded = "<green>Configuration and <count> arena(s) reloaded.";
-    public String reloadFailed = "<red>config.yml has an error, the previous configuration is kept and hub changes are not saved. <count> arena(s) reloaded. Check the console.";
+    public String reloadFailed = "<red>config.yml or messages.yml has an error, so its previous version is kept. <count> arena(s) reloaded. Check the console.";
 }

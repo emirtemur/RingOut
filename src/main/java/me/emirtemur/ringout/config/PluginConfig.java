@@ -11,7 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** plugins/RingOut/config.yml. Missing keys are filled in with these defaults on load. */
+/** plugins/RingOut/config.yml (texts are in messages.yml). Missing keys are filled in with these defaults on load. */
 @Header({
         "RingOut - last one standing inside the ring wins.",
         "Texts use MiniMessage: https://docs.advntr.dev/minimessage/format.html"
@@ -46,8 +46,6 @@ public class PluginConfig extends OkaeriConfig {
             "optional name, lore, enchantments, unbreakable, and extra (items given together with it)."
     })
     public List<ItemEntry> items = ItemEntry.defaults();
-
-    public Messages messages = new Messages();
 
     @SuppressWarnings("deprecation")
     @Names(strategy = NameStrategy.HYPHEN_CASE, modifier = NameModifier.TO_LOWER_CASE)

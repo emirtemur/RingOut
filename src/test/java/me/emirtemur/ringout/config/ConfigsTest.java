@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import me.emirtemur.ringout.arena.ArenaConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,7 +41,7 @@ class ConfigsTest {
         assertTrue(yaml.contains("arena-defaults:"), yaml);
         assertTrue(yaml.contains("min-players: 2"), yaml);
         assertTrue(yaml.contains("outside-grace-ticks: 20"), yaml);
-        assertTrue(yaml.contains("no-permission:"), yaml);
+        assertFalse(yaml.contains("no-permission:"), "texts live in messages.yml now");
 
         PluginConfig config = Configs.read(PluginConfig.class, file);
         assertEquals(16, config.game.maxPlayers);
@@ -84,16 +85,43 @@ class ConfigsTest {
 
     @Test
     void messagesAreFoundByTheirFileKey() {
-        Messages messages = Configs.create(PluginConfig.class).messages;
+        Messages messages = Configs.create(Messages.class);
         assertEquals(messages.arenaNotFound, messages.get("arena-not-found"));
         assertEquals(messages.stateNotBuilt, messages.get("state-not-built"));
         assertEquals(messages.bossbarSuddenDeath, messages.get("bossbar-sudden-death"));
     }
 
     @Test
+    void messagesMovedFromTheOldConfigKeepEditedAndUnknownTexts() throws IOException {
+        // What the plugin does on the first start after messages left config.yml.
+        Messages moved = Configs.create(Messages.class);
+        moved.load(Map.of("prefix", "[Old] ", "joined", "WELCOME <player>!", "my-own-key", "x"));
+        File file = dir.resolve("messages.yml").toFile();
+        assertTrue(Configs.writeIfChanged(moved, file));
+
+        String yaml = read(file);
+        assertTrue(yaml.contains("RingOut messages."), "header comment");
+        assertTrue(yaml.contains("my-own-key: x"), yaml);
+
+        Messages read = Configs.read(Messages.class, file);
+        assertEquals("[Old] ", read.prefix);
+        assertEquals("WELCOME <player>!", read.joined);
+        assertEquals(Configs.create(Messages.class).noPermission, read.noPermission);
+        assertFalse(Configs.writeIfChanged(read, file));
+    }
+
+    @Test
+    void loadErrorsKeepTheYamlPosition() throws IOException {
+        File file = file("game:\n  min-players: [unclosed\n");
+        OkaeriException error = assertThrows(OkaeriException.class, () -> Configs.read(PluginConfig.class, file));
+        String described = Configs.describe(error);
+        assertTrue(described.contains("line"), described);
+    }
+
+    @Test
     void settingsLookUpMessagesByKey() {
-        Settings settings = new Settings(Configs.create(PluginConfig.class));
-        assertEquals(Configs.create(PluginConfig.class).messages.menuNotFound, settings.raw("menu-not-found"));
+        Settings settings = new Settings(Configs.create(PluginConfig.class), Configs.create(Messages.class));
+        assertEquals(Configs.create(Messages.class).menuNotFound, settings.raw("menu-not-found"));
         assertEquals("no-such-key", settings.raw("no-such-key"));
     }
 
@@ -142,7 +170,6 @@ class ConfigsTest {
         assertEquals(2, config.items.size());
         assertEquals(2, config.items.getFirst().enchantments.get("knockback"));
         assertEquals(16, config.items.get(1).amount);
-        assertEquals("[Old] ", config.messages.prefix);
 
         // The old arena section is not part of the config anymore, but it is kept for the move.
         Configs.write(config, file);

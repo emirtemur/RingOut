@@ -1,5 +1,7 @@
 # RingOut
 
+[![Build](https://github.com/emirtemur/RingOut/actions/workflows/build.yml/badge.svg)](https://github.com/emirtemur/RingOut/actions/workflows/build.yml)
+
 A Paper minigame plugin: **the last player standing inside the ring wins.**
 
 A colorful ring split into slices floats over the void. Every player spawns on a slice, receives a random item every few seconds, and tries to knock everyone else off. Fall below the ring or stand outside it and you're out; the last one left wins.

@@ -16,12 +16,17 @@ plugins {
 }
 
 group = "me.emirtemur"
-version = "1.0.1"
+version = "1.0.2"
 
 repositories {
-    mavenLocal()
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
+    // Last and Paper only, so a stale local artifact can't make local builds differ from CI.
+    mavenLocal {
+        content {
+            includeGroup("io.papermc.paper")
+        }
+    }
 }
 
 dependencies {

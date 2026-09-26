@@ -23,7 +23,8 @@ import me.emirtemur.ringout.command.RingOutCommand;
 import me.emirtemur.ringout.config.Settings;
 import me.emirtemur.ringout.game.Game;
 import me.emirtemur.ringout.game.GameListener;
-import me.emirtemur.ringout.game.SnapshotStore;
+import me.emirtemur.ringout.hub.Hub;
+import me.emirtemur.ringout.hub.HubListener;
 import me.emirtemur.ringout.item.ItemPool;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
@@ -40,38 +41,48 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class RingOutPlugin extends JavaPlugin {
 
     private Settings settings;
-    /** False when the last load of config.yml failed, so the in-memory arena did not come from the file. */
-    private boolean arenaSavable;
+    /** False when the last load of config.yml failed, so the in-memory arena and hub did not come from the file. */
+    private boolean configSavable;
     /** config.yml failed to load at startup, so the arena is the jar default, not the server's arena. */
     private boolean arenaFromJar;
     /** Highest level a failed arena save was logged at; lower or equal repeats go to FINE. Null = none yet. */
     private Level unsavedLogged;
     private Arena arena;
     private ItemPool itemPool;
+    private Hub hub;
     private ArenaBuilder arenaBuilder;
-    private SnapshotStore snapshots;
     private Game game;
 
     @Override
     public void onEnable() {
         loadConfiguration();
         arenaBuilder = new ArenaBuilder(this);
-        snapshots = new SnapshotStore(new File(getDataFolder(), "snapshots"), getLogger());
         game = new Game(this);
         loadArenaWorld();
 
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
+        getServer().getPluginManager().registerEvents(new HubListener(this), this);
         RingOutCommand command = new RingOutCommand(this);
         Objects.requireNonNull(getCommand("ringout")).setExecutor(command);
         Objects.requireNonNull(getCommand("ringout")).setTabCompleter(command);
 
-        // After a /reload, players online may still have a snapshot from an interrupted game.
+        // After a /reload, players already online are put in the hub like on a fresh join.
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (snapshots.has(player.getUniqueId())) {
-                restoreLeftover(player);
+            if (!player.hasPermission(Hub.BYPASS_PERMISSION)) {
+                hub.send(player);
             }
         }
+        warnAboutOldSnapshots();
         getLogger().info("RingOut enabled with " + itemPool.size() + " item pool entries.");
+    }
+
+    /** Older versions saved inventories there; they are left alone but no longer restored. */
+    private void warnAboutOldSnapshots() {
+        File[] files = new File(getDataFolder(), "snapshots").listFiles((dir, name) -> name.endsWith(".yml"));
+        if (files != null && files.length > 0) {
+            getLogger().warning(files.length + " snapshots from an older RingOut version remain in "
+                    + "plugins/RingOut/snapshots and are no longer restored.");
+        }
     }
 
     @Override
@@ -99,9 +110,9 @@ public final class RingOutPlugin extends JavaPlugin {
         try {
             new YamlConfiguration().load(configFile());
         } catch (IOException | InvalidConfigurationException e) {
-            getLogger().severe("config.yml could not be parsed, arena changes will not be saved until it is fixed: "
+            getLogger().severe("config.yml could not be parsed, arena and hub changes will not be saved until it is fixed: "
                     + e.getMessage());
-            arenaSavable = false;
+            configSavable = false;
             if (settings == null) {
                 // First load: run on the jar's config.yml. Not via getConfig(), which would parse
                 // the broken file again and log a second stack trace.
@@ -111,7 +122,7 @@ public final class RingOutPlugin extends JavaPlugin {
             return false;
         }
         reloadConfig();
-        arenaSavable = true;
+        configSavable = true;
         arenaFromJar = false;
         unsavedLogged = null;
         applyConfiguration(getConfig());
@@ -123,6 +134,7 @@ public final class RingOutPlugin extends JavaPlugin {
         ConfigurationSection section = config.getConfigurationSection("arena");
         arena = Arena.load(section != null ? section : config.createSection("arena"), getLogger());
         itemPool = ItemPool.load(config.getMapList("items"), getLogger());
+        hub = Hub.load(config.getConfigurationSection("hub"));
     }
 
     private YamlConfiguration jarDefaults() {
@@ -141,11 +153,16 @@ public final class RingOutPlugin extends JavaPlugin {
      * Returns false when the change was not saved.
      */
     public boolean saveArena() {
-        if (!updateArenaSection(arena::save)) {
+        if (!updateSection("arena", arena::save)) {
             return false;
         }
         arena.markSaved();
         return true;
+    }
+
+    /** Writes only the hub section into config.yml, with the same guarantees as saveArena. */
+    public boolean saveHub() {
+        return updateSection("hub", hub::save);
     }
 
     /**
@@ -158,29 +175,30 @@ public final class RingOutPlugin extends JavaPlugin {
     public void saveBuildState() {
         if (arena.isSettingsDirty()) {
             saveArena();
-        } else if (arena.isBuildStateDirty() && updateArenaSection(arena::saveBuildState)) {
+        } else if (arena.isBuildStateDirty() && updateSection("arena", arena::saveBuildState)) {
             arena.markSaved();
         }
     }
 
-    private boolean updateArenaSection(Consumer<ConfigurationSection> writer) {
-        if (!arenaSavable) {
-            return unsaved(Level.WARNING, "config.yml failed to load, so arena changes are not saved.", null);
+    /** Rewrites one top-level section of config.yml as it is on disk right now; see saveArena. */
+    private boolean updateSection(String path, Consumer<ConfigurationSection> writer) {
+        if (!configSavable) {
+            return unsaved(Level.WARNING, "config.yml failed to load, so " + path + " changes are not saved.", null);
         }
         File file = configFile();
         YamlConfiguration disk = new YamlConfiguration();
         try {
             disk.load(file);
         } catch (IOException | InvalidConfigurationException e) {
-            return unsaved(Level.WARNING, "config.yml currently has an error, arena changes are not saved: "
+            return unsaved(Level.WARNING, "config.yml currently has an error, " + path + " changes are not saved: "
                     + e.getMessage(), null);
         }
-        if (disk.isSet("arena") && !disk.isConfigurationSection("arena")) {
-            return unsaved(Level.WARNING, "'arena' in config.yml is not a section, arena changes are not saved.", null);
+        if (disk.isSet(path) && !disk.isConfigurationSection(path)) {
+            return unsaved(Level.WARNING, "'" + path + "' in config.yml is not a section, changes are not saved.", null);
         }
-        ConfigurationSection section = disk.isConfigurationSection("arena")
-                ? disk.getConfigurationSection("arena")
-                : disk.createSection("arena");
+        ConfigurationSection section = disk.isConfigurationSection(path)
+                ? disk.getConfigurationSection(path)
+                : disk.createSection(path);
         writer.accept(section);
         try {
             writeAtomically(file, disk.saveToString());
@@ -269,23 +287,9 @@ public final class RingOutPlugin extends JavaPlugin {
         return world;
     }
 
-    /** Gives a player back what they had before an interrupted game (crash, restart, quit). */
-    public void restoreLeftover(Player player) {
-        if (!player.isOnline() || game.isPlaying(player)) {
-            return;
-        }
-        snapshots.load(player.getUniqueId()).ifPresent(snapshot -> {
-            // After a crash the last auto-save may have stored an in-flight arena pearl with the player.
-            Game.discardPearls(player);
-            snapshot.restore(player);
-            snapshots.delete(player.getUniqueId());
-            player.sendMessage(settings.message("snapshot-restored"));
-        });
-    }
-
-    /** False when the last config.yml load failed; arena changes then can't be saved until a successful reload. */
-    public boolean isArenaSavable() {
-        return arenaSavable;
+    /** False when the last config.yml load failed; arena and hub changes then can't be saved until a successful reload. */
+    public boolean isConfigSavable() {
+        return configSavable;
     }
 
     /** True while the arena comes from the jar defaults because config.yml failed to load at startup. */
@@ -309,8 +313,8 @@ public final class RingOutPlugin extends JavaPlugin {
         return arenaBuilder;
     }
 
-    public SnapshotStore snapshots() {
-        return snapshots;
+    public Hub hub() {
+        return hub;
     }
 
     public Game game() {

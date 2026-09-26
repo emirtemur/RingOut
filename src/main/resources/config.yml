@@ -32,6 +32,13 @@ arena:
   built: false
   built-radius: 0
 
+# Players who are not in a game wait at the hub. The whole server is RingOut: everyone is
+# sent here with an empty inventory when they join the server or a game ends, except players
+# with the ringout.bypass permission, who keep their state on join (for building).
+hub:
+  # Set with /ro sethub. Until then players are sent to the main world spawn.
+  set: false
+
 game:
   min-players: 2
   max-players: 16
@@ -134,7 +141,7 @@ messages:
   prefix: "<dark_gray>[<gradient:#ff5555:#ffaa00>RingOut</gradient>]</dark_gray> "
   no-permission: "<red>You don't have permission to do that."
   players-only: "<red>Only players can use this command."
-  usage: "<gray>Usage: <yellow>/ro <join|leave|start|stop|setcenter|setlobby|radius|slices|build|createworld|reload>"
+  usage: "<gray>Usage: <yellow>/ro <join|leave|start|stop|setcenter|setlobby|sethub|radius|slices|build|createworld|reload>"
   arena-not-ready: "<red>The arena is not set up yet. An admin must run <yellow>/ro build</yellow>."
   arena-resetting: "<yellow>The arena is being reset, try again in a moment."
   already-in-game: "<red>You are already in the game."
@@ -142,6 +149,7 @@ messages:
   game-running: "<red>A game is already in progress. Try again when it ends."
   game-full: "<red>The game is full."
   joined: "<green><player> joined the ring! <gray>(<count>/<max>)"
+  bypass-inventory-cleared: "<yellow>Your inventory was cleared for the game. The bypass permission only keeps it when you join the server."
   left: "<yellow><player> left the game. <gray>(<count>/<max>)"
   waiting: "<gray>Waiting for players... <yellow><count>/<min>"
   lobby-countdown: "<yellow>The game starts in <gold><seconds></gold>s!"
@@ -175,6 +183,8 @@ messages:
   arena-build-failed: "<red>Arena build failed: <error>"
   center-set: "<green>Ring center set to <white><world> <x> <y> <z></white>. Run <yellow>/ro build</yellow> to build it."
   lobby-set: "<green>Lobby set."
+  hub-set: "<green>Hub set. Players are sent here when they join the server or a game ends."
+  hub-not-saved: "<red>config.yml has an error, so the hub is used for now but not saved. Fix the file, run <yellow>/ro reload</yellow> and set it again."
   radius-set: "<green>Radius set to <white><radius></white>. Run <yellow>/ro build</yellow> to apply."
   slices-set: "<green>Slices set to <white><slices></white>. Run <yellow>/ro build</yellow> to apply."
   world-created: "<green>Void world <white><world></white> is ready."
@@ -186,8 +196,5 @@ messages:
   reload-failed: "<red>config.yml has an error, the previous configuration is kept and arena changes are not saved. Check the console."
   build-needs-config: "<red>config.yml failed to load at startup, so the arena location is unknown. Fix the file and run <yellow>/ro reload</yellow> before building."
   config-invalid: "<red>config.yml has an error, so this change is applied but not saved yet. Fix the file: it is saved with the next build, or set it again after <yellow>/ro reload</yellow>."
-  config-load-failed: "<red>config.yml failed to load, so arena settings can't be changed. Fix the file and run <yellow>/ro reload</yellow> first."
-  snapshot-restored: "<gray>Your inventory from an unfinished RingOut game was restored."
-  snapshot-pending: "<red>Your items from an earlier RingOut game could not be restored yet. Ask an admin for help."
-  snapshot-save-failed: "<red>Your inventory could not be saved, so you can't join right now."
+  config-load-failed: "<red>config.yml failed to load, so arena and hub settings can't be changed. Fix the file and run <yellow>/ro reload</yellow> first."
   arena-busy: "<red>The arena is being built, try again in a moment."

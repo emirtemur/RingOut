@@ -22,7 +22,6 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -43,16 +42,7 @@ public final class GameListener implements Listener {
         return plugin.settings();
     }
 
-    // --- Joining and leaving the server --------------------------------------
-
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        if (plugin.snapshots().has(player.getUniqueId())) {
-            // One tick later so the player is fully in the world before being teleported.
-            Bukkit.getScheduler().runTask(plugin, () -> plugin.restoreLeftover(player));
-        }
-    }
+    // --- Leaving the server (joining is handled by the hub) ------------------
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {

@@ -11,7 +11,7 @@ A colorful ring split into slices floats over the void. Every player spawns on a
 - **Random items**: a weighted, fully configurable item pool (knockback stick, wool, snowballs, wind charges, ender pearls, punch bow, auto-primed TNT and more).
 - **Fair elimination**: players are out when they fall below the ring, or when they stand outside it (for example on a bridge) for longer than a short grace period. Being knocked into the air past the edge and landing back inside doesn't count.
 - **Sudden death**: after a set time the ring shrinks one layer at a time.
-- **Safe inventories**: inventories, levels and effects are saved to disk before a game and restored afterwards, even after a crash or restart.
+- **Dedicated server hub**: the whole server is RingOut. Players join into a protected hub with an empty inventory and return there after every game.
 - **Clean resets**: blocks players place are tracked and removed, and the ring is rebuilt after every game.
 - **Boss bar, titles, sounds and fireworks**, with all text customizable using [MiniMessage](https://docs.advntr.dev/minimessage/format.html).
 
@@ -32,7 +32,7 @@ A colorful ring split into slices floats over the void. Every player spawns on a
 /ro build
 ```
 
-Players can now join with `/ro join`.
+Then stand where players should wait between games and run `/ro sethub`. Players can now join with `/ro join`.
 
 ## Commands
 
@@ -44,6 +44,7 @@ Players can now join with `/ro join`.
 | `/ro stop` | Stop the running game | `ringout.admin` |
 | `/ro setcenter [world x y z]` | Set the ring center (in game: the block you stand on) | `ringout.admin` |
 | `/ro setlobby [world x y z]` | Set the lobby (defaults to the ring center) | `ringout.admin` |
+| `/ro sethub [world x y z]` | Set the hub where players wait between games | `ringout.admin` |
 | `/ro radius <3-100>` | Set the ring radius | `ringout.admin` |
 | `/ro slices <2-16>` | Set the number of slices | `ringout.admin` |
 | `/ro build` | Build the ring | `ringout.admin` |
@@ -52,9 +53,11 @@ Players can now join with `/ro join`.
 
 `/ringout` works as well as `/ro`. Setup commands only work while no game is running.
 
+Players with `ringout.bypass` (op by default) keep their inventory and game mode when they join the server and can build in the hub.
+
 ## Configuration
 
-Everything lives in `plugins/RingOut/config.yml`: the arena (colors, radius, slices), game rules (player counts, timers, PvP damage, whether explosions break the ring), sudden death, win commands, the item pool and all messages.
+Everything lives in `plugins/RingOut/config.yml`: the arena (colors, radius, slices), the hub, game rules (player counts, timers, PvP damage, whether explosions break the ring), sudden death, win commands, the item pool and all messages.
 
 If `config.yml` has a YAML error, the plugin keeps the last working configuration and never overwrites your file.
 

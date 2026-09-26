@@ -15,6 +15,8 @@ import me.emirtemur.ringout.RingOutPlugin;
 import me.emirtemur.ringout.arena.Arena;
 import me.emirtemur.ringout.arena.BlockPos;
 import me.emirtemur.ringout.config.Settings;
+import me.emirtemur.ringout.hub.Hub;
+import me.emirtemur.ringout.util.Players;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
@@ -49,7 +51,6 @@ public final class Game {
 
     private final Set<UUID> players = new LinkedHashSet<>();
     private final Set<UUID> alive = new LinkedHashSet<>();
-    private final Map<UUID, PlayerSnapshot> snapshots = new HashMap<>();
     private final Map<UUID, Integer> outsideTicks = new HashMap<>();
     private final Set<BlockPos> placedBlocks = new HashSet<>();
     private final BossBar bossBar = BossBar.bossBar(Component.empty(), 1f, BossBar.Color.YELLOW, BossBar.Overlay.PROGRESS);
@@ -140,26 +141,15 @@ public final class Game {
             return;
         }
 
-        UUID id = player.getUniqueId();
-        if (plugin.snapshots().has(id)) {
-            // A leftover from an interrupted game must be restored first, never overwritten.
-            plugin.restoreLeftover(player);
-            if (plugin.snapshots().has(id)) {
-                player.sendMessage(s.message("snapshot-pending"));
-                return;
-            }
-        }
         // A pearl thrown just before joining would otherwise pull the player off the lobby later.
-        discardPearls(player);
-        PlayerSnapshot snapshot = PlayerSnapshot.capture(player);
-        if (!plugin.snapshots().save(id, snapshot)) {
-            player.sendMessage(s.message("snapshot-save-failed"));
-            return;
-        }
-        snapshots.put(id, snapshot);
-        players.add(id);
+        Players.discardPearls(player);
+        players.add(player.getUniqueId());
 
-        prepare(player, GameMode.ADVENTURE);
+        if (player.hasPermission(Hub.BYPASS_PERMISSION) && !player.getInventory().isEmpty()) {
+            // Bypass only protects them on server join; a game always starts from an empty inventory.
+            player.sendMessage(s.message("bypass-inventory-cleared"));
+        }
+        Players.reset(player, GameMode.ADVENTURE);
         player.teleport(arena().lobby());
         broadcast("joined", Placeholder.unparsed("player", player.getName()),
                 Placeholder.unparsed("count", String.valueOf(players.size())),
@@ -181,29 +171,26 @@ public final class Game {
             player.sendMessage(settings().message("not-in-game"));
             return;
         }
-        remove(player, false);
+        remove(player);
     }
 
     public void handleQuit(Player player) {
         if (isPlaying(player)) {
-            // The snapshot stays on disk and is restored when the player comes back.
-            remove(player, true);
+            remove(player);
         }
     }
 
-    private void remove(Player player, boolean quit) {
+    private void remove(Player player) {
         UUID id = player.getUniqueId();
         boolean wasAlive = state == GameState.ACTIVE && alive.contains(id);
         players.remove(id);
         alive.remove(id);
         outsideTicks.remove(id);
         player.hideBossBar(bossBar);
-        // Runs before the player's data is saved on quit, so no pearl is stored with them either.
-        discardPearls(player);
-        PlayerSnapshot snapshot = snapshots.remove(id);
-        if (!quit) {
-            restore(player, snapshot);
-        }
+        // Also on quit: PlayerQuitEvent runs before the player's data is saved, so they are stored
+        // in the hub state (no game items, pearls or spectator mode), even if they skip the hub on
+        // their next join because of the bypass permission.
+        plugin.hub().send(player);
 
         Settings s = settings();
         if (wasAlive) {
@@ -315,7 +302,7 @@ public final class Game {
         currentRadius = arena().radius();
         for (int i = 0; i < online.size(); i++) {
             Player p = online.get(i);
-            prepare(p, GameMode.ADVENTURE);
+            Players.reset(p, GameMode.ADVENTURE);
             p.teleport(arena().spawnPoint(i, online.size()));
         }
 
@@ -478,7 +465,7 @@ public final class Game {
         }
         Settings s = settings();
         outsideTicks.remove(id);
-        discardPearls(player);
+        Players.discardPearls(player);
         player.getInventory().clear();
         player.setFireTicks(0);
         player.setFallDistance(0);
@@ -534,16 +521,10 @@ public final class Game {
         endTask = Bukkit.getScheduler().runTaskLater(plugin, this::finish, s.endingSeconds * 20L);
     }
 
-    /** Sends everyone back and resets the arena for the next match. */
+    /** Sends everyone to the hub and resets the arena for the next match. */
     private void finish() {
         cancelTasks();
-        for (UUID id : List.copyOf(players)) {
-            Player p = Bukkit.getPlayer(id);
-            if (p != null) {
-                p.hideBossBar(bossBar);
-                restore(p, snapshots.get(id));
-            }
-        }
+        sendAllToHub();
         resetState();
         plugin.arenaBuilder().clearPlaced(placedBlocks);
         placedBlocks.clear();
@@ -571,16 +552,10 @@ public final class Game {
         return true;
     }
 
-    /** Plugin disable: put everyone back right now, no scheduling possible anymore. */
+    /** Plugin disable: send everyone to the hub right now, no scheduling possible anymore. */
     public void shutdown() {
         cancelTasks();
-        for (UUID id : List.copyOf(players)) {
-            Player p = Bukkit.getPlayer(id);
-            if (p != null) {
-                p.hideBossBar(bossBar);
-                restore(p, snapshots.get(id));
-            }
-        }
+        sendAllToHub();
         resetState();
         plugin.arenaBuilder().clearPlaced(placedBlocks);
         placedBlocks.clear();
@@ -591,7 +566,6 @@ public final class Game {
         generation++;
         players.clear();
         alive.clear();
-        snapshots.clear();
         outsideTicks.clear();
         forced = false;
         suddenDeath = false;
@@ -608,37 +582,11 @@ public final class Game {
 
     // --- Helpers --------------------------------------------------------------
 
-    /** Clears a player for play without touching their saved state. */
-    private void prepare(Player player, GameMode gameMode) {
-        player.getInventory().clear();
-        player.getActivePotionEffects().forEach(effect -> player.removePotionEffect(effect.getType()));
-        player.setGameMode(gameMode);
-        player.setAllowFlight(false);
-        player.setHealth(PlayerSnapshot.maxHealth(player));
-        player.setFoodLevel(20);
-        player.setSaturation(20f);
-        player.setFireTicks(0);
-        player.setFallDistance(0);
-    }
-
-    /**
-     * Removes the player's ender pearls still in flight. Since 1.21.2 a pearl keeps its owner
-     * even after they leave (it is saved with them and follows across worlds), so a pearl thrown
-     * just before leaving the game would pull them back into the arena.
-     */
-    public static void discardPearls(Player player) {
-        List.copyOf(player.getEnderPearls()).forEach(Entity::remove);
-    }
-
-    /** Restores from memory, falling back to disk, then removes the disk copy. */
-    private void restore(Player player, PlayerSnapshot snapshot) {
-        UUID id = player.getUniqueId();
-        discardPearls(player);
-        PlayerSnapshot snap = snapshot != null ? snapshot : plugin.snapshots().load(id).orElse(null);
-        if (snap != null) {
-            snap.restore(player);
+    private void sendAllToHub() {
+        for (Player p : onlinePlayers()) {
+            p.hideBossBar(bossBar);
+            plugin.hub().send(p);
         }
-        plugin.snapshots().delete(id);
     }
 
     /** Pulls a wandering spectator back to the ring. */

@@ -21,7 +21,7 @@ public final class RingOutCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBCOMMANDS = List.of("join", "leave");
     private static final List<String> ADMIN_SUBCOMMANDS = List.of(
-            "start", "stop", "setcenter", "setlobby", "radius", "slices", "build", "createworld", "reload");
+            "start", "stop", "setcenter", "setlobby", "sethub", "radius", "slices", "build", "createworld", "reload");
 
     private final RingOutPlugin plugin;
 
@@ -55,6 +55,7 @@ public final class RingOutCommand implements TabExecutor {
             case "stop" -> sender.sendMessage(settings().message(plugin.game().stop() ? "stopped" : "no-game"));
             case "setcenter" -> setCenter(sender, args);
             case "setlobby" -> setLobby(sender, args);
+            case "sethub" -> setHub(sender, args);
             case "radius" -> setNumber(sender, args, 3, 100, true);
             case "slices" -> setNumber(sender, args, 2, 16, false);
             case "build" -> build(sender);
@@ -76,7 +77,7 @@ public final class RingOutCommand implements TabExecutor {
     }
 
     private void setCenter(CommandSender sender, String[] args) {
-        if (!idle(sender) || !arenaEditable(sender)) {
+        if (!idle(sender) || !configEditable(sender)) {
             return;
         }
         Location location = locationFrom(sender, args);
@@ -97,7 +98,7 @@ public final class RingOutCommand implements TabExecutor {
     }
 
     private void setLobby(CommandSender sender, String[] args) {
-        if (!idle(sender) || !arenaEditable(sender)) {
+        if (!idle(sender) || !configEditable(sender)) {
             return;
         }
         Location location = locationFrom(sender, args);
@@ -110,8 +111,21 @@ public final class RingOutCommand implements TabExecutor {
         }
     }
 
+    /** The hub works during games too, so it only needs a loaded config, not an idle game. */
+    private void setHub(CommandSender sender, String[] args) {
+        if (!configEditable(sender)) {
+            return;
+        }
+        Location location = locationFrom(sender, args);
+        if (location == null) {
+            return;
+        }
+        plugin.hub().setLocation(location);
+        sender.sendMessage(settings().message(plugin.saveHub() ? "hub-set" : "hub-not-saved"));
+    }
+
     private void setNumber(CommandSender sender, String[] args, int min, int max, boolean radius) {
-        if (!idle(sender) || !arenaEditable(sender)) {
+        if (!idle(sender) || !configEditable(sender)) {
             return;
         }
         if (args.length < 2) {
@@ -186,11 +200,11 @@ public final class RingOutCommand implements TabExecutor {
     // --- Helpers -------------------------------------------------------------------
 
     /**
-     * Arena settings can't be changed after config.yml failed to load: the change could never be
-     * saved and the next successful reload would throw it away, so it is refused up front.
+     * Arena and hub settings can't be changed after config.yml failed to load: the change could
+     * never be saved and the next successful reload would throw it away, so it is refused up front.
      */
-    private boolean arenaEditable(CommandSender sender) {
-        if (plugin.isArenaSavable()) {
+    private boolean configEditable(CommandSender sender) {
+        if (plugin.isConfigSavable()) {
             return true;
         }
         sender.sendMessage(settings().message("config-load-failed"));
@@ -281,7 +295,7 @@ public final class RingOutCommand implements TabExecutor {
                     .filter(s -> s.startsWith(prefix))
                     .toList();
         }
-        if (args.length == 2 && (args[0].equalsIgnoreCase("setcenter") || args[0].equalsIgnoreCase("setlobby"))) {
+        if (args.length == 2 && (Stream.of("setcenter", "setlobby", "sethub").anyMatch(args[0]::equalsIgnoreCase))) {
             return Bukkit.getWorlds().stream().map(World::getName)
                     .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
                     .toList();

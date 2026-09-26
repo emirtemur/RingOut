@@ -41,13 +41,14 @@ import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
-/** The single RingOut match: lobby, countdown, fight, elimination and cleanup. */
+/** The match on one arena: lobby, countdown, fight, elimination and cleanup. */
 public final class Game {
 
     /** Period of the fight loop in ticks. */
     private static final int LOOP_PERIOD = 5;
 
     private final RingOutPlugin plugin;
+    private final Arena arena;
 
     private final Set<UUID> players = new LinkedHashSet<>();
     private final Set<UUID> alive = new LinkedHashSet<>();
@@ -74,8 +75,9 @@ public final class Game {
     private boolean suddenDeath;
     private int shrinkTimer;
 
-    public Game(RingOutPlugin plugin) {
+    public Game(RingOutPlugin plugin, Arena arena) {
         this.plugin = plugin;
+        this.arena = arena;
     }
 
     // --- Queries -----------------------------------------------------------
@@ -112,15 +114,30 @@ public final class Game {
         return plugin.settings();
     }
 
-    private Arena arena() {
-        return plugin.arena();
+    public Arena arena() {
+        return arena;
+    }
+
+    /** Nobody in it and no match running: safe to reload or delete. */
+    public boolean isIdle() {
+        return state == GameState.WAITING && players.isEmpty();
+    }
+
+    /** Players in the lobby or the match, including eliminated spectators. */
+    public int playerCount() {
+        return players.size();
+    }
+
+    /** Waiting and the lobby countdown is running (still joinable). */
+    public boolean isStarting() {
+        return state == GameState.WAITING && lobbyTask != null;
     }
 
     // --- Joining and leaving -------------------------------------------------
 
     public void join(Player player) {
         Settings s = settings();
-        if (isPlaying(player)) {
+        if (plugin.arenas().gameOf(player) != null) {
             player.sendMessage(s.message("already-in-game"));
             return;
         }
@@ -133,7 +150,7 @@ public final class Game {
             return;
         }
         if (!arena().isReady()) {
-            player.sendMessage(s.message("arena-not-ready"));
+            player.sendMessage(s.message("arena-not-ready", Placeholder.unparsed("arena", arena.name())));
             return;
         }
         if (players.size() >= s.maxPlayers) {
@@ -144,6 +161,7 @@ public final class Game {
         // A pearl thrown just before joining would otherwise pull the player off the lobby later.
         Players.discardPearls(player);
         players.add(player.getUniqueId());
+        plugin.arenas().track(player, this);
 
         if (player.hasPermission(Hub.BYPASS_PERMISSION) && !player.getInventory().isEmpty()) {
             // Bypass only protects them on server join; a game always starts from an empty inventory.
@@ -184,6 +202,7 @@ public final class Game {
         UUID id = player.getUniqueId();
         boolean wasAlive = state == GameState.ACTIVE && alive.contains(id);
         players.remove(id);
+        plugin.arenas().untrack(player);
         alive.remove(id);
         outsideTicks.remove(id);
         player.hideBossBar(bossBar);
@@ -564,6 +583,7 @@ public final class Game {
 
     private void resetState() {
         generation++;
+        players.forEach(plugin.arenas()::untrack);
         players.clear();
         alive.clear();
         outsideTicks.clear();

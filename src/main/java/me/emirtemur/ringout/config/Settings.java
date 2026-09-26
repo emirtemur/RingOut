@@ -5,9 +5,11 @@ import java.util.Objects;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.MemoryConfiguration;
 import org.bukkit.configuration.file.FileConfiguration;
 
-/** Typed, immutable view of config.yml (except the arena section, see Arena). */
+/** Typed, immutable view of config.yml (the hub lives in Hub, arenas in their own files). */
 public final class Settings {
 
     private static final MiniMessage MINI = MiniMessage.miniMessage();
@@ -35,6 +37,8 @@ public final class Settings {
     public final int minRadius;
 
     public final List<String> winCommands;
+    /** Radius, slices and look for arenas created with /ro create. */
+    public final ConfigurationSection arenaDefaults;
 
     private final FileConfiguration config;
     private final String prefix;
@@ -56,7 +60,7 @@ public final class Settings {
         tntFuseTicks = Math.max(1, config.getInt("game.tnt-fuse-ticks", 40));
         spectatorMaxDistance = Math.max(0, config.getInt("game.spectator-max-distance", 0));
         endingSeconds = Math.max(1, config.getInt("game.ending-seconds", 8));
-        blocksPerTick = Math.max(100, config.getInt("arena.blocks-per-tick", 2000));
+        blocksPerTick = Math.max(100, config.getInt("game.blocks-per-tick", 2000));
 
         suddenDeathEnabled = config.getBoolean("sudden-death.enabled", true);
         suddenDeathStartAfter = Math.max(0, config.getInt("sudden-death.start-after", 300));
@@ -64,6 +68,8 @@ public final class Settings {
         minRadius = Math.max(1, config.getInt("sudden-death.min-radius", 3));
 
         winCommands = List.copyOf(config.getStringList("win-commands"));
+        ConfigurationSection defaults = config.getConfigurationSection("arena-defaults");
+        arenaDefaults = defaults != null ? defaults : new MemoryConfiguration();
         prefix = Objects.requireNonNullElse(config.getString("messages.prefix"), "");
     }
 

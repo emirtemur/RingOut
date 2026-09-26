@@ -1,13 +1,9 @@
 # RingOut - last one standing inside the ring wins.
 # Messages use MiniMessage format: https://docs.advntr.dev/minimessage/format.html
 
-arena:
-  # World the ring is built in. "/ro createworld" creates an empty void world with this name.
-  world: ringout_world
-  center:
-    x: 0
-    y: 150
-    z: 0
+# Each arena lives in plugins/RingOut/arenas/<name>.yml and is made with /ro create <name>.
+# New arenas start with these settings; after that every arena file can be tuned on its own.
+arena-defaults:
   radius: 20
   slices: 8
   # Slice colors, used in order and repeated if there are more slices than colors.
@@ -23,14 +19,6 @@ arena:
   edge: WHITE_CONCRETE
   core: OBSIDIAN
   core-radius: 2
-  # Blocks placed per tick while building. Lower it if building causes lag.
-  blocks-per-tick: 2000
-  # Lobby is set with /ro setlobby. When unset, players wait on the center of the ring.
-  lobby:
-    set: false
-  # Managed by the plugin, do not edit.
-  built: false
-  built-radius: 0
 
 # Players who are not in a game wait at the hub. The whole server is RingOut: everyone is
 # sent here with an empty inventory when they join the server or a game ends, except players
@@ -67,6 +55,8 @@ game:
   spectator-max-distance: 0
   # Seconds to celebrate before everyone is sent back.
   ending-seconds: 8
+  # Blocks placed per tick while building a ring. Lower it if building causes lag.
+  blocks-per-tick: 2000
 
 sudden-death:
   enabled: true
@@ -141,12 +131,13 @@ messages:
   prefix: "<dark_gray>[<gradient:#ff5555:#ffaa00>RingOut</gradient>]</dark_gray> "
   no-permission: "<red>You don't have permission to do that."
   players-only: "<red>Only players can use this command."
-  usage: "<gray>Usage: <yellow>/ro <join|leave|start|stop|setcenter|setlobby|sethub|radius|slices|build|createworld|reload>"
-  arena-not-ready: "<red>The arena is not set up yet. An admin must run <yellow>/ro build</yellow>."
+  usage: "<gray>Usage: <yellow>/ro <join|leave|list|create|delete|setcenter|setlobby|radius|slices|build|start|stop|sethub|createworld|reload>"
+  arena-not-found: "<red>There is no arena called <white><arena></white>. See <yellow>/ro list</yellow>."
+  arena-not-ready: "<red>This arena is not built yet. An admin must run <yellow>/ro build <arena></yellow>."
   arena-resetting: "<yellow>The arena is being reset, try again in a moment."
-  already-in-game: "<red>You are already in the game."
+  already-in-game: "<red>You are already in a game."
   not-in-game: "<red>You are not in a game."
-  game-running: "<red>A game is already in progress. Try again when it ends."
+  game-running: "<red>A game is already in progress there. Try again when it ends."
   game-full: "<red>The game is full."
   joined: "<green><player> joined the ring! <gray>(<count>/<max>)"
   bypass-inventory-cleared: "<yellow>Your inventory was cleared for the game. The bypass permission only keeps it when you join the server."
@@ -174,27 +165,44 @@ messages:
   win-subtitle: "<yellow>Last one in the ring"
   no-winner: "<gray>Nobody survived. No winner this time."
   game-stopped: "<red>The game was stopped by an admin."
-  no-game: "<red>There is no game to stop."
+  no-game: "<red>There is no game to stop in <white><arena></white>."
   start-not-enough: "<red>Need at least <min> player(s) to start."
-  started: "<green>Starting the game."
-  stopped: "<green>Game stopped."
-  arena-building: "<yellow>Building the arena..."
-  arena-built: "<green>Arena built <gray>(radius <radius>, <slices> slices)."
-  arena-build-failed: "<red>Arena build failed: <error>"
-  center-set: "<green>Ring center set to <white><world> <x> <y> <z></white>. Run <yellow>/ro build</yellow> to build it."
-  lobby-set: "<green>Lobby set."
+  started: "<green>Starting the game in <white><arena></white>."
+  stopped: "<green>Game in <white><arena></white> stopped."
+  arena-list-header: "<gold>Arenas:"
+  arena-list-entry: "<dark_gray>- <white><arena></white> <state> <gray><count>/<max> <dark_gray>(<world> <x> <y> <z>, radius <radius>)"
+  arena-list-empty: "<gray>No arenas yet. An admin can create one with <yellow>/ro create <name></yellow>."
+  state-not-built: "<dark_gray>not built"
+  state-waiting: "<green>waiting"
+  state-starting: "<yellow>starting soon"
+  state-building: "<yellow>resetting"
+  state-playing: "<red>in game"
+  state-ending: "<red>ending"
+  invalid-arena-name: "<red>Arena names may only use a-z, 0-9, _ and - (up to 32 characters)."
+  arena-exists: "<red>An arena called <white><arena></white> already exists."
+  arena-created: "<green>Arena <white><arena></white> created at <white><world> <x> <y> <z></white>. Run <yellow>/ro build <arena></yellow> to build it."
+  arena-create-failed: "<red>Could not save arenas/<arena>.yml, so the arena was not created. Check the console."
+  arena-deleted: "<green>Arena <white><arena></white> deleted. Its blocks are still in the world."
+  arena-delete-failed: "<red>Could not delete arenas/<arena>.yml. Check the console."
+  arena-overlap: "<red>That ring would come too close to arena <white><other></white>. Keep at least <gap> blocks between rings."
+  arena-building: "<yellow>Building <white><arena></white>..."
+  arena-built: "<green>Arena <white><arena></white> built <gray>(radius <radius>, <slices> slices)."
+  arena-build-failed: "<red>Building <white><arena></white> failed: <error>"
+  arena-busy: "<red><white><arena></white> is being built, try again in a moment."
+  arena-not-saved: "<red>arenas/<arena>.yml has an error, so this change is applied but not saved yet. Fix the file: it is saved with the next build, or set it again after <yellow>/ro reload</yellow>."
+  center-set: "<green>Center of <white><arena></white> set to <white><world> <x> <y> <z></white>. Run <yellow>/ro build <arena></yellow> to build it."
+  lobby-set: "<green>Lobby of <white><arena></white> set."
+  radius-set: "<green>Radius of <white><arena></white> set to <white><radius></white>. Run <yellow>/ro build <arena></yellow> to apply."
+  slices-set: "<green>Slices of <white><arena></white> set to <white><slices></white>. Run <yellow>/ro build <arena></yellow> to apply."
   hub-set: "<green>Hub set. Players are sent here when they join the server or a game ends."
   hub-not-saved: "<red>config.yml has an error, so the hub is used for now but not saved. Fix the file, run <yellow>/ro reload</yellow> and set it again."
-  radius-set: "<green>Radius set to <white><radius></white>. Run <yellow>/ro build</yellow> to apply."
-  slices-set: "<green>Slices set to <white><slices></white>. Run <yellow>/ro build</yellow> to apply."
+  config-load-failed: "<red>config.yml failed to load, so the hub can't be changed. Fix the file and run <yellow>/ro reload</yellow> first."
   world-created: "<green>Void world <white><world></white> is ready."
   world-not-found: "<red>World <white><world></white> is not loaded."
+  world-not-void: "<red>World <white><world></white> already exists and is not a void world, so RingOut leaves it alone."
   invalid-number: "<red><value> is not a valid number."
   out-of-range: "<red>Value must be between <min> and <max>."
-  cannot-while-running: "<red>You can't do that while a game is running."
-  reloaded: "<green>Configuration reloaded."
-  reload-failed: "<red>config.yml has an error, the previous configuration is kept and arena changes are not saved. Check the console."
-  build-needs-config: "<red>config.yml failed to load at startup, so the arena location is unknown. Fix the file and run <yellow>/ro reload</yellow> before building."
-  config-invalid: "<red>config.yml has an error, so this change is applied but not saved yet. Fix the file: it is saved with the next build, or set it again after <yellow>/ro reload</yellow>."
-  config-load-failed: "<red>config.yml failed to load, so arena and hub settings can't be changed. Fix the file and run <yellow>/ro reload</yellow> first."
-  arena-busy: "<red>The arena is being built, try again in a moment."
+  cannot-while-running: "<red>You can't do that while a game is running there."
+  reload-busy: "<red>Reload only works while nobody is in a game and no arena is being built."
+  reloaded: "<green>Configuration and <count> arena(s) reloaded."
+  reload-failed: "<red>config.yml has an error, the previous configuration is kept and hub changes are not saved. <count> arena(s) reloaded. Check the console."

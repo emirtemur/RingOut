@@ -8,12 +8,12 @@ description: Last one standing inside the ring wins.
 commands:
   ringout:
     description: RingOut minigame commands.
-    usage: /<command> <join|leave|start|stop|setcenter|setlobby|sethub|radius|slices|build|createworld|reload>
+    usage: /<command> <join|leave|list|create|delete|setcenter|setlobby|radius|slices|build|start|stop|sethub|createworld|reload>
     aliases: [ro]
 
 permissions:
   ringout.play:
-    description: Join and leave RingOut games.
+    description: Join and leave RingOut games and list the arenas.
     default: true
   ringout.admin:
     description: Set up and control RingOut arenas.

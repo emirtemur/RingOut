@@ -5,19 +5,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.logging.Level;
-import me.emirtemur.ringout.arena.Arena;
 import me.emirtemur.ringout.arena.ArenaBuilder;
+import me.emirtemur.ringout.arena.Arenas;
 import me.emirtemur.ringout.arena.VoidGenerator;
 import me.emirtemur.ringout.command.RingOutCommand;
 import me.emirtemur.ringout.config.Settings;
@@ -26,11 +18,12 @@ import me.emirtemur.ringout.game.GameListener;
 import me.emirtemur.ringout.hub.Hub;
 import me.emirtemur.ringout.hub.HubListener;
 import me.emirtemur.ringout.item.ItemPool;
+import me.emirtemur.ringout.util.FailureLog;
+import me.emirtemur.ringout.util.SafeYaml;
 import org.bukkit.Bukkit;
 import org.bukkit.GameRules;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -40,25 +33,26 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class RingOutPlugin extends JavaPlugin {
 
+    /** Void worlds spawn players just above the default ring height. */
+    private static final int VOID_SPAWN_Y = 151;
+
     private Settings settings;
-    /** False when the last load of config.yml failed, so the in-memory arena and hub did not come from the file. */
+    /** False when the last load of config.yml failed, so the in-memory hub did not come from the file. */
     private boolean configSavable;
-    /** config.yml failed to load at startup, so the arena is the jar default, not the server's arena. */
-    private boolean arenaFromJar;
-    /** Highest level a failed arena save was logged at; lower or equal repeats go to FINE. Null = none yet. */
-    private Level unsavedLogged;
-    private Arena arena;
+    private FailureLog failures;
     private ItemPool itemPool;
     private Hub hub;
     private ArenaBuilder arenaBuilder;
-    private Game game;
+    private Arenas arenas;
 
     @Override
     public void onEnable() {
+        failures = new FailureLog(getLogger());
         loadConfiguration();
         arenaBuilder = new ArenaBuilder(this);
-        game = new Game(this);
-        loadArenaWorld();
+        arenas = new Arenas(this);
+        arenas.load(configSavable ? getConfig() : null);
+        loadArenaWorlds();
 
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
         getServer().getPluginManager().registerEvents(new HubListener(this), this);
@@ -73,7 +67,8 @@ public final class RingOutPlugin extends JavaPlugin {
             }
         }
         warnAboutOldSnapshots();
-        getLogger().info("RingOut enabled with " + itemPool.size() + " item pool entries.");
+        getLogger().info("RingOut enabled with " + arenas.games().size() + " arena(s) and "
+                + itemPool.size() + " item pool entries.");
     }
 
     /** Older versions saved inventories there; they are left alone but no longer restored. */
@@ -87,8 +82,8 @@ public final class RingOutPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (game != null) {
-            game.shutdown();
+        if (arenas != null) {
+            arenas.shutdown();
         }
         if (arenaBuilder != null) {
             arenaBuilder.cancelAll();
@@ -97,12 +92,12 @@ public final class RingOutPlugin extends JavaPlugin {
 
     @Override
     public ChunkGenerator getDefaultWorldGenerator(String worldName, String id) {
-        return new VoidGenerator(arena != null ? arena.centerY() + 1 : 151);
+        return new VoidGenerator(VOID_SPAWN_Y);
     }
 
     /**
      * (Re)reads config.yml. Only call while no game is running. If the file cannot be parsed,
-     * the previous configuration stays active (jar defaults on startup) and arena changes are
+     * the previous configuration stays active (jar defaults on startup) and hub changes are
      * not saved until it loads again. Returns false when the file could not be parsed.
      */
     public boolean loadConfiguration() {
@@ -110,29 +105,33 @@ public final class RingOutPlugin extends JavaPlugin {
         try {
             new YamlConfiguration().load(configFile());
         } catch (IOException | InvalidConfigurationException e) {
-            getLogger().severe("config.yml could not be parsed, arena and hub changes will not be saved until it is fixed: "
+            getLogger().severe("config.yml could not be parsed, hub changes will not be saved until it is fixed: "
                     + e.getMessage());
             configSavable = false;
             if (settings == null) {
                 // First load: run on the jar's config.yml. Not via getConfig(), which would parse
                 // the broken file again and log a second stack trace.
                 applyConfiguration(jarDefaults());
-                arenaFromJar = true;
             }
             return false;
         }
         reloadConfig();
         configSavable = true;
-        arenaFromJar = false;
-        unsavedLogged = null;
+        failures.clear("config");
         applyConfiguration(getConfig());
         return true;
     }
 
+    /** Reloads config.yml and every arena file. Only call while all arenas are idle. */
+    public boolean reloadAll() {
+        boolean configLoaded = loadConfiguration();
+        arenas.load(configSavable ? getConfig() : null);
+        loadArenaWorlds();
+        return configLoaded;
+    }
+
     private void applyConfiguration(FileConfiguration config) {
         settings = new Settings(config);
-        ConfigurationSection section = config.getConfigurationSection("arena");
-        arena = Arena.load(section != null ? section : config.createSection("arena"), getLogger());
         itemPool = ItemPool.load(config.getMapList("items"), getLogger());
         hub = Hub.load(config.getConfigurationSection("hub"));
     }
@@ -147,133 +146,56 @@ public final class RingOutPlugin extends JavaPlugin {
     }
 
     /**
-     * Writes only the arena section into config.yml as it is on disk right now, so edits made to
-     * the file since the last reload are kept. Nothing is written if the arena was not loaded from
-     * the file (it failed to parse) or if the file does not parse at this moment.
-     * Returns false when the change was not saved.
+     * Writes only the hub section into config.yml as it is on disk right now, so edits made to
+     * the file since the last reload are kept. Nothing is written if the last load failed or the
+     * file does not parse at this moment. Returns false when the change was not saved.
      */
-    public boolean saveArena() {
-        if (!updateSection("arena", arena::save)) {
+    public boolean saveHub() {
+        if (!configSavable) {
+            failures.fail("config", Level.WARNING,
+                    "config.yml failed to load, so hub changes are not saved.", null);
             return false;
         }
-        arena.markSaved();
+        try {
+            SafeYaml.update(configFile(), "hub", hub::save);
+        } catch (SafeYaml.SaveException e) {
+            failures.fail("config", e.level(), e.getMessage(), e.getCause());
+            return false;
+        }
+        failures.clear("config");
         return true;
-    }
-
-    /** Writes only the hub section into config.yml, with the same guarantees as saveArena. */
-    public boolean saveHub() {
-        return updateSection("hub", hub::save);
-    }
-
-    /**
-     * Saves only the built/built-radius keys after a build, so arena settings edited on disk
-     * since the last reload are not overwritten by a build the admin did not start.
-     * If an admin change (center, radius...) is still unsaved, the whole arena is written instead,
-     * so the file never pairs an old center with the new ring's build state.
-     * A failed save is retried after the next build.
-     */
-    public void saveBuildState() {
-        if (arena.isSettingsDirty()) {
-            saveArena();
-        } else if (arena.isBuildStateDirty() && updateSection("arena", arena::saveBuildState)) {
-            arena.markSaved();
-        }
-    }
-
-    /** Rewrites one top-level section of config.yml as it is on disk right now; see saveArena. */
-    private boolean updateSection(String path, Consumer<ConfigurationSection> writer) {
-        if (!configSavable) {
-            return unsaved(Level.WARNING, "config.yml failed to load, so " + path + " changes are not saved.", null);
-        }
-        File file = configFile();
-        YamlConfiguration disk = new YamlConfiguration();
-        try {
-            disk.load(file);
-        } catch (IOException | InvalidConfigurationException e) {
-            return unsaved(Level.WARNING, "config.yml currently has an error, " + path + " changes are not saved: "
-                    + e.getMessage(), null);
-        }
-        if (disk.isSet(path) && !disk.isConfigurationSection(path)) {
-            return unsaved(Level.WARNING, "'" + path + "' in config.yml is not a section, changes are not saved.", null);
-        }
-        ConfigurationSection section = disk.isConfigurationSection(path)
-                ? disk.getConfigurationSection(path)
-                : disk.createSection(path);
-        writer.accept(section);
-        try {
-            writeAtomically(file, disk.saveToString());
-        } catch (IOException e) {
-            return unsaved(Level.SEVERE, "Could not save config.yml", e);
-        }
-        unsavedLogged = null;
-        return true;
-    }
-
-    /**
-     * Logs a failed arena save. Builds retry the save every game, so a failure is logged at its level
-     * only if nothing as severe was logged yet (a new SEVERE after a WARNING still shows); repeats go
-     * to FINE until a save or reload succeeds. Returns false.
-     */
-    private boolean unsaved(Level level, String message, Throwable error) {
-        boolean escalated = unsavedLogged == null || level.intValue() > unsavedLogged.intValue();
-        getLogger().log(escalated ? level : Level.FINE, message, error);
-        if (escalated) {
-            unsavedLogged = level;
-        }
-        return false;
-    }
-
-    /**
-     * Writes and syncs a temp file first, then moves it over config.yml, so neither a crash nor a
-     * power loss mid-write can leave a half-written or empty config.yml. The temp file is removed on failure.
-     */
-    private static void writeAtomically(File file, String content) throws IOException {
-        Path target = file.toPath();
-        Path temp = target.resolveSibling(file.getName() + ".tmp");
-        try {
-            try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.WRITE,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                ByteBuffer buffer = ByteBuffer.wrap(content.getBytes(StandardCharsets.UTF_8));
-                while (buffer.hasRemaining()) {
-                    channel.write(buffer);
-                }
-                channel.force(true);
-            }
-            try {
-                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException e) {
-            try {
-                Files.deleteIfExists(temp);
-            } catch (IOException suppressed) {
-                // Keep the original write/move error as the reported cause.
-                e.addSuppressed(suppressed);
-            }
-            throw e;
-        }
     }
 
     private File configFile() {
         return new File(getDataFolder(), "config.yml");
     }
 
-    /** Loads the arena world on startup if it exists on disk but is not loaded yet. */
-    private void loadArenaWorld() {
-        String name = arena.worldName();
-        if (Bukkit.getWorld(name) == null && new File(Bukkit.getWorldContainer(), name).isDirectory()) {
-            createVoidWorld(name);
+    /** Loads each arena's world on startup if it exists on disk but is not loaded yet. */
+    private void loadArenaWorlds() {
+        for (Game game : arenas.games()) {
+            String name = game.arena().worldName();
+            if (Bukkit.getWorld(name) == null && new File(Bukkit.getWorldContainer(), name).isDirectory()) {
+                createVoidWorld(name);
+            }
         }
     }
 
-    /** Creates (or loads) an empty void world for the ring. */
+    /**
+     * Creates (or loads) an empty void world for rings. Returns null for an already loaded world
+     * that is not a void world, so a typo can't change the rules of the main world. Game rules are
+     * only set when the world is new; an existing void world keeps what the admin set.
+     */
     public World createVoidWorld(String name) {
+        World loaded = Bukkit.getWorld(name);
+        if (loaded != null) {
+            return loaded.getGenerator() instanceof VoidGenerator ? loaded : null;
+        }
+        boolean isNew = !new File(Bukkit.getWorldContainer(), name).isDirectory();
         World world = new WorldCreator(name)
-                .generator(new VoidGenerator(arena.centerY() + 1))
+                .generator(new VoidGenerator(VOID_SPAWN_Y))
                 .generateStructures(false)
                 .createWorld();
-        if (world != null) {
+        if (world != null && isNew) {
             world.setGameRule(GameRules.ADVANCE_TIME, false);
             world.setGameRule(GameRules.ADVANCE_WEATHER, false);
             world.setGameRule(GameRules.SPAWN_MOBS, false);
@@ -282,27 +204,18 @@ public final class RingOutPlugin extends JavaPlugin {
             world.setGameRule(GameRules.SHOW_ADVANCEMENT_MESSAGES, false);
             world.setTime(6000);
             world.setStorm(false);
-            world.setSpawnLocation(arena.centerX(), arena.centerY() + 1, arena.centerZ());
+            world.setSpawnLocation(0, VOID_SPAWN_Y, 0);
         }
         return world;
     }
 
-    /** False when the last config.yml load failed; arena and hub changes then can't be saved until a successful reload. */
+    /** False when the last config.yml load failed; hub changes then can't be saved until a successful reload. */
     public boolean isConfigSavable() {
         return configSavable;
     }
 
-    /** True while the arena comes from the jar defaults because config.yml failed to load at startup. */
-    public boolean isArenaFromJar() {
-        return arenaFromJar;
-    }
-
     public Settings settings() {
         return settings;
-    }
-
-    public Arena arena() {
-        return arena;
     }
 
     public ItemPool itemPool() {
@@ -313,11 +226,11 @@ public final class RingOutPlugin extends JavaPlugin {
         return arenaBuilder;
     }
 
-    public Hub hub() {
-        return hub;
+    public Arenas arenas() {
+        return arenas;
     }
 
-    public Game game() {
-        return game;
+    public Hub hub() {
+        return hub;
     }
 }

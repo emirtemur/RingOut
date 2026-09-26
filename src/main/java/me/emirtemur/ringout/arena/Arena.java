@@ -11,11 +11,12 @@ import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.util.Vector;
 
-/** Ring geometry and lobby, persisted in the "arena" section of config.yml. */
+/** One ring: geometry, look and lobby, persisted in arenas/<name>.yml. */
 public final class Arena {
 
     private static final double TWO_PI = Math.PI * 2;
 
+    private final String name;
     private String worldName;
     private int centerX;
     private int centerY;
@@ -37,22 +38,24 @@ public final class Arena {
 
     private boolean built;
     private int builtRadius;
-    /** Build state changed in memory but not written to config.yml yet. */
+    /** Build state changed in memory but not written to the arena file yet. */
     private boolean buildStateDirty;
     /** Admin settings (center, radius, slices, lobby) changed in memory but not written yet. */
     private boolean settingsDirty;
 
-    private Arena(List<Material> colors, Material edge, Material core, int coreRadius) {
+    private Arena(String name, List<Material> colors, Material edge, Material core, int coreRadius) {
+        this.name = name;
         this.colors = colors;
         this.edge = edge;
         this.core = core;
         this.coreRadius = coreRadius;
     }
 
-    public static Arena load(ConfigurationSection sec, Logger log) {
+    public static Arena load(String name, ConfigurationSection sec, Logger log) {
+        String where = name + ".yml";
         List<Material> colors = new ArrayList<>();
-        for (String name : sec.getStringList("colors")) {
-            Material material = parseBlock(name, log, "arena.colors");
+        for (String color : sec.getStringList("colors")) {
+            Material material = parseBlock(color, log, where + " colors");
             if (material != null) {
                 colors.add(material);
             }
@@ -60,10 +63,10 @@ public final class Arena {
         if (colors.isEmpty()) {
             colors.add(Material.WHITE_CONCRETE);
         }
-        Material edge = parseBlock(sec.getString("edge", "WHITE_CONCRETE"), log, "arena.edge");
-        Material core = parseBlock(sec.getString("core", "OBSIDIAN"), log, "arena.core");
+        Material edge = parseBlock(sec.getString("edge", "WHITE_CONCRETE"), log, where + " edge");
+        Material core = parseBlock(sec.getString("core", "OBSIDIAN"), log, where + " core");
 
-        Arena arena = new Arena(colors,
+        Arena arena = new Arena(name, colors,
                 edge != null ? edge : Material.WHITE_CONCRETE,
                 core != null ? core : Material.OBSIDIAN,
                 Math.max(0, sec.getInt("core-radius", 2)));
@@ -103,6 +106,39 @@ public final class Arena {
         }
         sec.set("built", built);
         sec.set("built-radius", builtRadius);
+    }
+
+    /**
+     * A new, not yet built arena. Radius, slices and look come from the arena-defaults section
+     * of config.yml; afterwards each arena file can be tuned on its own.
+     */
+    public static Arena create(String name, String worldName, int x, int y, int z,
+                               ConfigurationSection defaults, Logger log) {
+        Arena arena = load(name, defaults, log);
+        arena.setCenter(worldName, x, y, z);
+        return arena;
+    }
+
+    /** Writes the look (colors, edge, core); only done when the file is created. */
+    public void saveAppearance(ConfigurationSection sec) {
+        sec.set("colors", colors.stream().map(Material::name).toList());
+        sec.set("edge", edge.name());
+        sec.set("core", core.name());
+        sec.set("core-radius", coreRadius);
+    }
+
+    /**
+     * Whether a ring at the given spot would come closer than the gap to this one (so knocked
+     * players and explosions stay apart). Uses the larger of this ring's configured and built radius.
+     */
+    public boolean touches(String world, int x, int z, int otherRadius, int gap) {
+        if (!worldName.equals(world)) {
+            return false;
+        }
+        double dx = centerX - x;
+        double dz = centerZ - z;
+        int reach = Math.max(radius, builtRadius) + otherRadius + gap;
+        return dx * dx + dz * dz < (double) reach * reach;
     }
 
     private static Material parseBlock(String name, Logger log, String path) {
@@ -208,7 +244,7 @@ public final class Arena {
         return built && world() != null;
     }
 
-    /** Records a finished build; the build state stays dirty until it is saved to config.yml. */
+    /** Records a finished build; the build state stays dirty until it is saved to the arena file. */
     public void markBuilt(int builtRadius) {
         if (!built || this.builtRadius != builtRadius) {
             buildStateDirty = true;
@@ -225,7 +261,7 @@ public final class Arena {
         return settingsDirty;
     }
 
-    /** Everything in memory now matches config.yml. */
+    /** Everything in memory now matches the arena file. */
     public void markSaved() {
         buildStateDirty = false;
         settingsDirty = false;
@@ -266,6 +302,14 @@ public final class Arena {
     public void setSlices(int slices) {
         this.slices = slices;
         settingsDirty = true;
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public boolean isBuilt() {
+        return built;
     }
 
     public String worldName() {

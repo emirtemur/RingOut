@@ -1,6 +1,7 @@
 package me.emirtemur.ringout.hub;
 
 import me.emirtemur.ringout.RingOutPlugin;
+import me.emirtemur.ringout.util.Players;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
@@ -33,7 +34,7 @@ public final class HubListener implements Listener {
 
     /** In the hub: online but not part of a game. */
     private boolean inHub(Player player) {
-        return !plugin.game().isPlaying(player);
+        return plugin.arenas().gameOf(player) == null;
     }
 
     /** In the hub and not allowed to change it. */
@@ -62,7 +63,9 @@ public final class HubListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onAttack(EntityDamageByEntityEvent event) {
-        if (event.getDamager() instanceof Player attacker && guarded(attacker)) {
+        // Also arrows, snowballs and TNT from the hub, not only direct hits.
+        Player attacker = Players.attackerOf(event.getDamager());
+        if (attacker != null && guarded(attacker)) {
             event.setCancelled(true);
         }
     }

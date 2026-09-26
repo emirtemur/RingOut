@@ -2,8 +2,10 @@ package me.emirtemur.ringout.arena;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -20,16 +22,21 @@ public final class ArenaBuilder {
 
     private final RingOutPlugin plugin;
     private final Set<BuildJob> jobs = new HashSet<>();
-    /** Builds not completed yet, including those still waiting for chunks. */
-    private int running;
+    /** Builds not completed yet per arena, including those still waiting for chunks. */
+    private final Map<Arena, Integer> running = new HashMap<>();
 
     public ArenaBuilder(RingOutPlugin plugin) {
         this.plugin = plugin;
     }
 
-    /** Whether a build is in progress; arena settings must not change meanwhile. */
+    /** Whether any build is in progress (arena files must not be reloaded meanwhile). */
     public boolean isBusy() {
-        return running > 0;
+        return !running.isEmpty();
+    }
+
+    /** Whether this arena is being built; its settings must not change meanwhile. */
+    public boolean isBusy(Arena arena) {
+        return running.containsKey(arena);
     }
 
     /**
@@ -55,8 +62,8 @@ public final class ArenaBuilder {
         }
 
         CompletableFuture<Void> result = new CompletableFuture<>();
-        running++;
-        result.whenComplete((ignored, error) -> running--);
+        running.merge(arena, 1, Integer::sum);
+        result.whenComplete((ignored, error) -> running.computeIfPresent(arena, (key, count) -> count > 1 ? count - 1 : null));
         CompletableFuture.allOf(loads.toArray(CompletableFuture[]::new)).whenComplete((ignored, error) ->
                 runSync(() -> {
                     if (error != null) {
@@ -168,7 +175,7 @@ public final class ArenaBuilder {
                 if (dx > reach) {
                     finish();
                     arena.markBuilt(radius);
-                    plugin.saveBuildState();
+                    plugin.arenas().saveBuildState(arena);
                     result.complete(null);
                 }
             } catch (RuntimeException e) {

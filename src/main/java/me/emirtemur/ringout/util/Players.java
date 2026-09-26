@@ -4,8 +4,11 @@ import java.util.List;
 import org.bukkit.GameMode;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.AreaEffectCloud;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.TNTPrimed;
 
 /** Small player helpers shared by the hub and the games. */
 public final class Players {
@@ -24,6 +27,26 @@ public final class Players {
         player.setSaturation(20f);
         player.setFireTicks(0);
         player.setFallDistance(0);
+    }
+
+    /**
+     * The player behind a hit: the attacker itself, the shooter of a projectile (arrows,
+     * snowballs, eggs, fishing hooks, wind charges) or whoever lit the TNT. Null for anything else.
+     */
+    public static Player attackerOf(Entity damager) {
+        if (damager instanceof Player player) {
+            return player;
+        }
+        if (damager instanceof Projectile projectile && projectile.getShooter() instanceof Player shooter) {
+            return shooter;
+        }
+        if (damager instanceof TNTPrimed tnt && tnt.getSource() instanceof Player source) {
+            return source;
+        }
+        if (damager instanceof AreaEffectCloud cloud && cloud.getSource() instanceof Player source) {
+            return source;
+        }
+        return null;
     }
 
     public static double maxHealth(Player player) {

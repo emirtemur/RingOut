@@ -24,6 +24,10 @@ arena-defaults:
 # sent here with an empty inventory when they join the server or a game ends, except players
 # with the ringout.bypass permission, who keep their state on join (for building).
 hub:
+  # Hotbar slot (0-8) of the compass that opens the arena menu.
+  menu-slot: 4
+  # Menu the compass opens, a file in plugins/RingOut/menus/ without .yml.
+  menu: arenas
   # Set with /ro sethub. Until then players are sent to the main world spawn.
   set: false
 
@@ -131,7 +135,7 @@ messages:
   prefix: "<dark_gray>[<gradient:#ff5555:#ffaa00>RingOut</gradient>]</dark_gray> "
   no-permission: "<red>You don't have permission to do that."
   players-only: "<red>Only players can use this command."
-  usage: "<gray>Usage: <yellow>/ro <join|leave|list|create|delete|setcenter|setlobby|radius|slices|build|start|stop|sethub|createworld|reload>"
+  usage: "<gray>Usage: <yellow>/ro <join|leave|list|menu|create|delete|setcenter|setlobby|radius|slices|build|start|stop|sethub|createworld|reload>"
   arena-not-found: "<red>There is no arena called <white><arena></white>. See <yellow>/ro list</yellow>."
   arena-not-ready: "<red>This arena is not built yet. An admin must run <yellow>/ro build <arena></yellow>."
   arena-resetting: "<yellow>The arena is being reset, try again in a moment."
@@ -169,6 +173,9 @@ messages:
   start-not-enough: "<red>Need at least <min> player(s) to start."
   started: "<green>Starting the game in <white><arena></white>."
   stopped: "<green>Game in <white><arena></white> stopped."
+  menu-item-name: "<gold><bold>Arenas</bold> <gray>(right-click)"
+  menu-item-lore: "<gray>Pick an arena to join"
+  menu-not-found: "<red>There is no menu called <white><menu></white>. Check plugins/RingOut/menus."
   arena-list-header: "<gold>Arenas:"
   arena-list-entry: "<dark_gray>- <white><arena></white> <state> <gray><count>/<max> <dark_gray>(<world> <x> <y> <z>, radius <radius>)"
   arena-list-empty: "<gray>No arenas yet. An admin can create one with <yellow>/ro create <name></yellow>."

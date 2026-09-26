@@ -1,0 +1,65 @@
+# Arena menu, opened with the hub compass (or /ro menu).
+# Laid out like a DeluxeMenus menu: every item has a material, a slot or slots, a name and lore,
+# and optional click commands. Text uses MiniMessage: https://docs.advntr.dev/minimessage/format.html
+#
+# Items are drawn top to bottom, so a later item covers an earlier one in the same slot.
+# Placeholders: %player% everywhere; in the arena_list item also %arena%, %state%, %players%, %max%.
+# Click commands (run top to bottom), for click_commands, left_click_commands and right_click_commands:
+#   [close]              close the menu
+#   [join]               join the clicked arena (arena_list only)
+#   [player] <command>   run a command as the player, without the /
+#   [console] <command>  run a command from the console, without the /
+#   [message] <text>     send the player a message
+#   [sound] <sound> [volume] [pitch]   play a sound, e.g. [sound] ui.button.click 1 1
+
+menu_title: "<dark_gray>Pick an arena"
+# Rows x 9, from 9 to 54.
+size: 27
+# Seconds between redraws while the menu is open, so states and player counts stay live. 0 = never.
+update_interval: 1
+
+items:
+  border:
+    material: GRAY_STAINED_GLASS_PANE
+    slots:
+      - 0-8
+      - 18-26
+    display_name: " "
+
+  arenas:
+    # Fills the slots with one icon per arena, in the order of /ro list.
+    type: arena_list
+    slots:
+      - 9-17
+    display_name: "<white><bold>%arena%"
+    lore:
+      - "<gray>State: %state%"
+      - "<gray>Players: <white>%players%/%max%"
+      - ""
+      - "%join_hint%"
+    # Icon per arena state. "full" is used for a waiting arena that has no room left.
+    material_by_state:
+      waiting: LIME_CONCRETE
+      starting: YELLOW_CONCRETE
+      full: RED_CONCRETE
+      building: ORANGE_CONCRETE
+      playing: RED_CONCRETE
+      ending: RED_CONCRETE
+      not_built: GRAY_CONCRETE
+    # Replaces %join_hint% in the lore.
+    join_hint: "<green>Click to join"
+    not_joinable_hint: "<red>Can't join right now"
+    click_commands:
+      - "[join]"
+    # Shown in the first slot when there are no arenas yet.
+    empty:
+      material: BARRIER
+      display_name: "<gray>No arenas yet"
+
+  close:
+    material: BARRIER
+    slot: 22
+    display_name: "<red>Close"
+    left_click_commands:
+      - "[sound] ui.button.click"
+      - "[close]"

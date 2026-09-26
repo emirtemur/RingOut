@@ -128,6 +128,11 @@ public final class Game {
         return players.size();
     }
 
+    /** What the arena menu offers: built, not started yet (the lobby countdown still counts) and not full. */
+    public boolean isJoinable() {
+        return state == GameState.WAITING && arena.isReady() && players.size() < settings().maxPlayers;
+    }
+
     /** Waiting and the lobby countdown is running (still joinable). */
     public boolean isStarting() {
         return state == GameState.WAITING && lobbyTask != null;
@@ -209,7 +214,7 @@ public final class Game {
         // Also on quit: PlayerQuitEvent runs before the player's data is saved, so they are stored
         // in the hub state (no game items, pearls or spectator mode), even if they skip the hub on
         // their next join because of the bypass permission.
-        plugin.hub().send(player);
+        plugin.sendToHub(player);
 
         Settings s = settings();
         if (wasAlive) {
@@ -605,7 +610,7 @@ public final class Game {
     private void sendAllToHub() {
         for (Player p : onlinePlayers()) {
             p.hideBossBar(bossBar);
-            plugin.hub().send(p);
+            plugin.sendToHub(p);
         }
     }
 

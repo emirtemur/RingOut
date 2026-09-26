@@ -46,7 +46,7 @@ public final class HubListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         if (!player.hasPermission(Hub.BYPASS_PERMISSION)) {
-            plugin.hub().send(player);
+            plugin.sendToHub(player);
         }
     }
 

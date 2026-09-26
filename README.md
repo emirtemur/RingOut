@@ -15,6 +15,7 @@ A colorful ring split into slices floats over the void. Every player spawns on a
 - **Fair elimination**: players are out when they fall below the ring, or when they stand outside it (for example on a bridge) for longer than a short grace period. Being knocked into the air past the edge and landing back inside doesn't count.
 - **Sudden death**: after a set time the ring shrinks one layer at a time.
 - **Server-wide hub**: the whole server runs RingOut. Players join into a protected hub with an empty inventory and return there after every game.
+- **Arena menu**: a compass in the hub opens a menu of all arenas with their live state and player count; click one to join. The menu is a DeluxeMenus-style file you can redesign.
 - **Clean resets**: blocks players place are tracked and removed, and the ring is rebuilt after every game.
 - **Boss bar, titles, sounds and fireworks**, with all text customizable using [MiniMessage](https://docs.advntr.dev/minimessage/format.html).
 
@@ -44,6 +45,7 @@ Add more arenas the same way, at least 10 blocks apart. Then stand where players
 | `/ro join <arena>` | Join an arena | `ringout.play` |
 | `/ro leave` | Leave your game | `ringout.play` |
 | `/ro list` | List the arenas and their state | `ringout.play` |
+| `/ro menu [menu]` | Open a menu (default: the arena menu) | `ringout.play` |
 | `/ro create <arena> [world x y z]` | Create an arena (in game: centered on the block you stand on) | `ringout.admin` |
 | `/ro delete <arena>` | Delete an arena's file (its blocks stay in the world) | `ringout.admin` |
 | `/ro setcenter <arena> [world x y z]` | Move the ring center | `ringout.admin` |
@@ -65,6 +67,7 @@ Players with `ringout.bypass` (op by default) keep their inventory and game mode
 
 - `plugins/RingOut/config.yml`: the hub, defaults for new arenas, game rules (player counts, timers, PvP damage, whether explosions break the ring), sudden death, win commands, the item pool and all messages.
 - `plugins/RingOut/arenas/<arena>.yml`: one file per arena with its location, size, colors and lobby.
+- `plugins/RingOut/menus/<menu>.yml`: menus laid out like DeluxeMenus (title, size, items with material, slots, name, lore and click commands such as `[join]`, `[close]`, `[player]`, `[console]`, `[message]` and `[sound]`). `arenas.yml` is the menu the hub compass opens; its `arena_list` item repeats once per arena.
 
 A file with a YAML error is never overwritten: config.yml keeps its last working version, and a broken arena file is skipped until it is fixed. Upgrading from a single-arena version moves the old arena to `arenas/default.yml`.
 

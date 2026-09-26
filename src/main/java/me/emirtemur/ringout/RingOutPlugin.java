@@ -18,6 +18,9 @@ import me.emirtemur.ringout.game.GameListener;
 import me.emirtemur.ringout.hub.Hub;
 import me.emirtemur.ringout.hub.HubListener;
 import me.emirtemur.ringout.item.ItemPool;
+import me.emirtemur.ringout.menu.MenuItem;
+import me.emirtemur.ringout.menu.MenuListener;
+import me.emirtemur.ringout.menu.Menus;
 import me.emirtemur.ringout.util.FailureLog;
 import me.emirtemur.ringout.util.SafeYaml;
 import org.bukkit.Bukkit;
@@ -44,6 +47,8 @@ public final class RingOutPlugin extends JavaPlugin {
     private Hub hub;
     private ArenaBuilder arenaBuilder;
     private Arenas arenas;
+    private MenuItem menuItem;
+    private Menus menus;
 
     @Override
     public void onEnable() {
@@ -53,9 +58,16 @@ public final class RingOutPlugin extends JavaPlugin {
         arenas = new Arenas(this);
         arenas.load(configSavable ? getConfig() : null);
         loadArenaWorlds();
+        menus = new Menus(this);
+        menus.load();
 
+        menuItem = new MenuItem(this);
+        MenuListener menuListener = new MenuListener(this);
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
         getServer().getPluginManager().registerEvents(new HubListener(this), this);
+        getServer().getPluginManager().registerEvents(menuListener, this);
+        // Open menus redraw on their update interval, so states and player counts stay live.
+        getServer().getScheduler().runTaskTimer(this, menuListener::tickOpenMenus, 20L, 20L);
         RingOutCommand command = new RingOutCommand(this);
         Objects.requireNonNull(getCommand("ringout")).setExecutor(command);
         Objects.requireNonNull(getCommand("ringout")).setTabCompleter(command);
@@ -63,7 +75,7 @@ public final class RingOutPlugin extends JavaPlugin {
         // After a /reload, players already online are put in the hub like on a fresh join.
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!player.hasPermission(Hub.BYPASS_PERMISSION)) {
-                hub.send(player);
+                sendToHub(player);
             }
         }
         warnAboutOldSnapshots();
@@ -127,6 +139,8 @@ public final class RingOutPlugin extends JavaPlugin {
         boolean configLoaded = loadConfiguration();
         arenas.load(configSavable ? getConfig() : null);
         loadArenaWorlds();
+        menus.closeAll();
+        menus.load();
         return configLoaded;
     }
 
@@ -232,5 +246,19 @@ public final class RingOutPlugin extends JavaPlugin {
 
     public Hub hub() {
         return hub;
+    }
+
+    public MenuItem menuItem() {
+        return menuItem;
+    }
+
+    public Menus menus() {
+        return menus;
+    }
+
+    /** Resets the player to the hub state, teleports them to the hub and hands out the arena menu compass. */
+    public void sendToHub(Player player) {
+        hub.send(player);
+        player.getInventory().setItem(settings.menuSlot, menuItem.create(settings));
     }
 }

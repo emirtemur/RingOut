@@ -30,6 +30,10 @@ public final class Settings {
     public final int spectatorMaxDistance;
     public final int endingSeconds;
     public final int blocksPerTick;
+    /** Hotbar slot (0-8) of the arena menu compass in the hub. */
+    public final int menuSlot;
+    /** The menu (menus/<name>.yml) the hub compass opens. */
+    public final String hubMenu;
 
     public final boolean suddenDeathEnabled;
     public final int suddenDeathStartAfter;
@@ -61,6 +65,8 @@ public final class Settings {
         spectatorMaxDistance = Math.max(0, config.getInt("game.spectator-max-distance", 0));
         endingSeconds = Math.max(1, config.getInt("game.ending-seconds", 8));
         blocksPerTick = Math.max(100, config.getInt("game.blocks-per-tick", 2000));
+        menuSlot = Math.max(0, Math.min(8, config.getInt("hub.menu-slot", 4)));
+        hubMenu = Objects.requireNonNullElse(config.getString("hub.menu"), "arenas");
 
         suddenDeathEnabled = config.getBoolean("sudden-death.enabled", true);
         suddenDeathStartAfter = Math.max(0, config.getInt("sudden-death.start-after", 300));
@@ -81,6 +87,11 @@ public final class Settings {
     /** A message without the prefix, for titles, boss bars and item names. */
     public Component text(String key, TagResolver... resolvers) {
         return MINI.deserialize(rawString(key), resolvers);
+    }
+
+    /** The unparsed MiniMessage text of a message, for placing inside other texts (menus). */
+    public String raw(String key) {
+        return rawString(key);
     }
 
     private String rawString(String key) {

@@ -23,7 +23,7 @@ import org.bukkit.entity.Player;
 
 public final class RingOutCommand implements TabExecutor {
 
-    private static final List<String> PLAYER_SUBCOMMANDS = List.of("join", "leave", "list");
+    private static final List<String> PLAYER_SUBCOMMANDS = List.of("join", "leave", "list", "menu");
     private static final List<String> ADMIN_SUBCOMMANDS = List.of(
             "create", "delete", "setcenter", "setlobby", "radius", "slices", "build", "start", "stop",
             "sethub", "createworld", "reload");
@@ -65,6 +65,7 @@ public final class RingOutCommand implements TabExecutor {
             case "join" -> join(sender, args);
             case "leave" -> withPlayer(sender, this::leave);
             case "list" -> list(sender);
+            case "menu" -> menu(sender, args);
             case "create" -> create(sender, args);
             case "delete" -> delete(sender, args);
             case "setcenter" -> setCenter(sender, args);
@@ -101,6 +102,22 @@ public final class RingOutCommand implements TabExecutor {
             player.sendMessage(settings().message("not-in-game"));
         } else {
             game.leave(player);
+        }
+    }
+
+    /** Opens a menu from plugins/RingOut/menus (default: the one the hub compass opens). */
+    private void menu(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(settings().message("players-only"));
+            return;
+        }
+        if (arenas().gameOf(player) != null) {
+            player.sendMessage(settings().message("already-in-game"));
+            return;
+        }
+        String name = args.length >= 2 ? args[1] : settings().hubMenu;
+        if (!plugin.menus().open(player, name)) {
+            player.sendMessage(settings().message("menu-not-found", Placeholder.unparsed("menu", name)));
         }
     }
 
@@ -456,6 +473,9 @@ public final class RingOutCommand implements TabExecutor {
         }
         if (args.length == 2 && ARENA_SUBCOMMANDS.contains(sub)) {
             return filter(arenas().names().stream(), args[1]);
+        }
+        if (args.length == 2 && sub.equals("menu")) {
+            return filter(plugin.menus().names().stream(), args[1]);
         }
         boolean worldArg = (args.length == 2 && (sub.equals("sethub") || sub.equals("createworld")))
                 || (args.length == 3 && (sub.equals("create") || sub.equals("setcenter") || sub.equals("setlobby")));
